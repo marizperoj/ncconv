@@ -37,13 +37,13 @@ class TestSimpleNc(unittest.TestCase):
 
 
 
-    def _getCtrd(element):
+    def _getCtrd(self,element):
         g = element['geometry']
         return (g.centroid.x,g.centroid.y)
 
 
     def setUp(self):
-        self.singleLayer = self.get_uri(bounds=Polygon(((0,0),(20,0),(20,20),(0,20))),rng=[datetime.datetime(2000,1,1),datetime.datetime(2000,1,10)],res=10)
+        self.singleLayer = self.get_uri(bounds=Polygon(((0,0),(40,0),(40,20),(0,40))),rng=[datetime.datetime(2000,1,1),datetime.datetime(2000,1,10)],res=10)
         self.multiLayer = self.get_uri(nlevels=4)
         self.randomized = self.get_uri(constant=None,nlevels=4)
 
@@ -82,6 +82,8 @@ class TestSimpleNc(unittest.TestCase):
         return elements
 
     def test_LSSlSdRcd(self):
+        "Local file, Single core, Single layer, Single date, Single Rectangle, Clip=False, Dissolve=False"
+        #pick one point in the upper left
         layer = self.singleLayer
         poly = Polygon(((0,0),(10,0),(10,10),(0,10))) 
         time = [datetime.datetime(2000,1,1),datetime.datetime(2000,1,1)]
@@ -89,22 +91,110 @@ class TestSimpleNc(unittest.TestCase):
         subdivide = False
         subres = 'Detect'
         elements = self._access(layer,poly,time,False,False,levels,subdivide,subres)
-        print elements
+
         self.assertEqual(len(elements),1)
         self.assertEqual(self._getCtrd(elements[0]),(5,5))
+
+        #pick one point in the middle
+        poly = Polygon(((10,10),(20,10),(20,20),(10,20)))
+        elements = self._access(layer,poly,time,False,False,levels,subdivide,subres)
+        self.assertEqual(len(elements),1)
+
+        c = [self._getCtrd(x) for x in elements]
+        self.assertTrue((15,15) in c)
         
+        #pick 2 elements
         poly = Polygon(((0,0),(20,0),(20,10),(0,10)))
-        elements = self.access(layer,poly,time,False,False,levels,subdivide,subres)
+        elements = self._access(layer,poly,time,False,False,levels,subdivide,subres)
         self.assertEqual(len(elements),2)
 
         c = [self._getCtrd(x) for x in elements]
-        self.assertTrue((5,5) in c and (10,5) in c)
+        self.assertTrue((5,5) in c and (15,5) in c)
 
-        poly = Polygon(((0,0),(20,0),(20,20),(0,20)))
-        elements = self.access(layer,poly,time,False,False,levels,subdivide,subres)
+        #pick the top row
+        poly = Polygon(((0,0),(40,0),(40,10),(0,10)))
+        elements = self._access(layer,poly,time,False,False,levels,subdivide,subres)
         self.assertEqual(len(elements),4)
+
         c = [self._getCtrd(x) for x in elements]
-        self.assertTrue((5,5) in c and (10,5) in c and (10,10) in c and (5,10) in c)
+        self.assertTrue((5,5) in c and (15,5) in c and (25,5 in c) and (35,5) in c)
+
+        #pick the left row
+        poly = Polygon(((0,0),(10,0),(10,40),(0,40)))
+        elements = self._access(layer,poly,time,False,False,levels,subdivide,subres)
+        self.assertEqual(len(elements),4)
+
+        c = [self._getCtrd(x) for x in elements]
+        self.assertTrue((5,5) in c and (5,15) in c and (5,25 in c) and (5,35) in c)
+
+        #pick the upper everything but right and bottom row
+        poly = Polygon(((0,0),(20,0),(20,20),(0,20)))
+        elements = self._access(layer,poly,time,False,False,levels,subdivide,subres)
+        self.assertEqual(len(elements),4)
+
+        c = [self._getCtrd(x) for x in elements]
+        self.assertTrue((5,5) in c and (15,5) in c and (15,15) in c and (5,15) in c)
+
+        #pick everything
+        poly = Polygon(((0,0),(40,0),(40,40),(0,40)))
+        elements = self._access(layer,poly,time,False,False,levels,subdivide,subres)
+        self.assertEqual(len(elements),16)
+
+        c = [self._getCtrd(x) for x in elements]
+        self.assertTrue((5, 5) in c and (15, 5) in c and (25, 5) in c and (35, 5) in c)
+        self.assertTrue((5,15) in c and (15,15) in c and (25,15) in c and (35,15) in c)
+        self.assertTrue((5,25) in c and (15,25) in c and (25,25) in c and (35,25) in c)
+        self.assertTrue((5,35) in c and (15,35) in c and (25,35) in c and (35,35) in c)
+
+
+    def test_LSSlSdRCd(self):
+        "Local file, Single core, Single layer, Single date, Single Rectangle, Clip=True, Dissolve=False"
+        #pick one point in the middle
+        layer = self.singleLayer
+        poly = Polygon(((10,10),(20,10),(20,20),(10,20)))
+        time = [datetime.datetime(2000,1,1),datetime.datetime(2000,1,1)]
+        levels = None
+        subdivide = False
+        subres = 'Detect'
+
+        elements = self._access(layer,poly,time,False,True,levels,subdivide,subres)
+        self.assertEqual(len(elements),1)
+
+        c = [self._getCtrd(x) for x in elements]
+        self.assertTrue((15,15) in c)
+
+
+        #move the area to cover the intersection of 4 points
+        poly = Polygon(((5,5),(15,5),(15,15),(5,15)))
+        elements = self._access(layer,poly,time,False,True,levels,subdivide,subres)
+        self.assertEqual(len(elements),4)
+
+        c = [self._getCtrd(x) for x in elements]
+        self.assertTrue((7.5, 7.5) in c and (12.5, 7.5) in c and (12.5, 12.5) in c and (7.5, 12.5) in c)
+
+        #pick everything
+        poly = Polygon(((0,0),(40,0),(40,40),(0,40)))
+        elements = self._access(layer,poly,time,False,True,levels,subdivide,subres)
+        self.assertEqual(len(elements),16)
+
+        c = [self._getCtrd(x) for x in elements]
+        self.assertTrue((5, 5) in c and (15, 5) in c and (25, 5) in c and (35, 5) in c)
+        self.assertTrue((5,15) in c and (15,15) in c and (25,15) in c and (35,15) in c)
+        self.assertTrue((5,25) in c and (15,25) in c and (25,25) in c and (35,25) in c)
+        self.assertTrue((5,35) in c and (15,35) in c and (25,35) in c and (35,35) in c)
+
+        #reduce selection by 5 units
+        poly = Polygon(((5,5),(35,5),(35,35),(5,35)))
+        elements = self._access(layer,poly,time,False,True,levels,subdivide,subres)
+        print elements
+        self.assertEqual(len(elements),16)
+
+        c = [self._getCtrd(x) for x in elements]
+        self.assertTrue((7.5, 7.5) in c and (15, 7.5) in c and (25, 7.5) in c and (32.5, 7.5) in c)
+        self.assertTrue((7.5,15) in c and (15,15) in c and (25,15) in c and (32.5,15) in c)
+        self.assertTrue((7.5,25) in c and (15,25) in c and (25,25) in c and (32.5,25) in c)
+        self.assertTrue((7.5,32.5) in c and (15,32.5) in c and (25,32.5) in c and (32.5,32.5) in c)
+
 
 if __name__ == "__main__":
     #import sys;sys.argv = ['', 'Test.testName']

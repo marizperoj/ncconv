@@ -88,8 +88,8 @@ class OcgDataset(object):
             yield ii,jj
             
     def _contains_(self,grid,lower,upper):
-        s1 = grid > lower
-        s2 = grid < upper
+        s1 = grid >= lower
+        s2 = grid <= upper
         return(s1*s2)
             
     def _set_overlay_(self,polygon=None,clip=False):
@@ -128,6 +128,7 @@ class OcgDataset(object):
             print smax_col
             print smin_row
             print smax_row
+            #include = smin_col*smax_col*smin_row*smax_row
             include = np.any((smin_col,smax_col),axis=0)*np.any((smin_row,smax_row),axis=0)
             print include
         else:
@@ -187,10 +188,15 @@ class OcgDataset(object):
             ## create the polygon
             g = self._make_poly_((self.min_row[ii,jj],self.max_row[ii,jj]),
                                  (self.min_col[ii,jj],self.max_col[ii,jj]))
+            print g.wkt
             ## add the polygon if it intersects the aoi of if all data is being
             ## returned.
             if polygon:
                 if not prepared_polygon.intersects(g): continue
+
+
+            if polygon.intersection(g).area==0:
+                continue
 #            if g.intersects(polygon) or polygon is None:
                 ## get the area before the intersection
             prearea = g.area
@@ -205,6 +211,7 @@ class OcgDataset(object):
                     self._pgrid[ii,jj]=True
             ## calculate the weight
             w = ng.area/prearea
+            print w
             ## a polygon can have a true intersects but actually not overlap
             ## i.e. shares a border.
             if w > 0:
@@ -213,6 +220,7 @@ class OcgDataset(object):
                 self._jgrid[ii,jj] = (g.centroid.x,g.centroid.y)
         ## the mask is used as a subset
         self._mask = self._weights > 0
+        print self._mask
 #        self._weights = self._weights/self._weights.sum()
     
     def _make_poly_(self,rtup,ctup):
@@ -310,11 +318,14 @@ class OcgDataset(object):
 
         if dimShape == 3:
             npd = self.dataset.variables[var_name][self._idxtime,self._idxrow,self._idxcol]
+            ## add in an extra dummy dimension in the case of one time layer
+            if len(npd.shape) <= 2:
+                npd = npd.reshape(len(self._idxtime),len(self._idxrow),len(self._idxcol))
         elif dimShape == 4:
             self.levels = self.dataset.variables[self.level_name][:]
             npd = self.dataset.variables[var_name][self._idxtime,levels,self._idxrow,self._idxcol]
-            if len(npd.shape)==3:
-                npd = npd.reshape(1,npd.shape[0],npd.shape[1],npd.shape[2])
+            if len(npd.shape)<=3:
+                npd = npd.reshape(len(self._idxtime),len(levels),len(self._idxrow),len(self._idxcol))
             #print npd.shape
             #print self._weights
         if self.multiReset:
@@ -323,10 +334,7 @@ class OcgDataset(object):
         lock.release()
 
         print "dtime: ", time.clock()-narg
-        
-        ## add in an extra dummy dimension in the case of one time layer
-        if len(npd.shape) == 2:
-            npd = npd.reshape(1,npd.shape[0],npd.shape[1])
+ 
         
         print('numpy extraction done.')
         
@@ -481,6 +489,7 @@ class OcgDataset(object):
                             recombine[ctr].append(feature)
                             
         else:
+            print self._mask
             ctr = None
             ## loop for each feature. no dissolving.
             for ii,jj in self._itr_array_(self._mask):
@@ -493,6 +502,7 @@ class OcgDataset(object):
                         ctr = self._jgrid[ii,jj]
                         recombine[ctr] = []
                     ## extract the data and convert any mask values
+                    print ocgShape
                     if ocgShape == 3:
                         data = [self._is_masked_(da) for da in npd[:,ii,jj]]
                         for kk in range(len(data)):
@@ -779,7 +789,7 @@ def multipolygon_multicore_operation(dataset,var,polygons,time_range=None,clip=N
     else:
         elements2 = elements
     print "expansion time: ",time.time()-dtime
-    print(repr(len(elements2)))
+    print "points: ",repr(len(elements2))
     return(elements2)
 
 
