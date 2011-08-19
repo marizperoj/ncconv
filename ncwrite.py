@@ -1,12 +1,10 @@
-from django.core import serializers
 import os
-import climatedata
 import numpy as np
 from netCDF4 import date2num, Dataset
 import datetime
 from shapely.geometry import Polygon
-from util.helpers import get_temp_path
-from pdb import set_trace as tr
+from helpers import get_temp_path
+from pdb import set_trace
 
 
 #PATH = os.path.join(os.path.split(climatedata.__file__)[0],'fixtures','trivial_grid.json')
@@ -40,23 +38,38 @@ class NcSpatial(object):
         ...
     ValueError: selected interval must yield an equal number of partitions.
     >>> n.get_dimension()
-    {'col': array([  0.,   5.,  10.]), 'row': array([  0.,   5.,  10.,  15.])}
+    {'row_bnds': array([[  0.,   5.],
+           [  5.,  10.],
+           [ 10.,  15.]]), 'col': array([ 2.5,  7.5]), 'col_bnds': array([[  0.,   5.],
+           [  5.,  10.]]), 'row': array([  2.5,   7.5,  12.5])}
     """
     
-    def __init__(self,bounds,res):
+    def __init__(self,bounds,res,add_bounds=True):
         self.bounds = bounds
         self.res = float(res)
+        self.add_bounds = add_bounds
         
     def get_dimension(self):
         self._partition_()
         ret = dict(row=self.dim_row,
                    col=self.dim_col)
+        if self.add_bounds:
+            ret.update(dict(row_bnds=self.dim_rowbnds,
+                            col_bnds=self.dim_colbnds))
         return(ret)
         
     def _partition_(self):
         min_x,min_y,max_x,max_y = self.bounds.envelope.bounds
         self.dim_row = self._do_partition_(min_y,max_y,self.res)
         self.dim_col = self._do_partition_(min_x,max_x,self.res)
+        if self.add_bounds:
+            self.dim_rowbnds = self._make_bounds_(self.dim_row)
+            self.dim_colbnds = self._make_bounds_(self.dim_col)
+        
+    def _make_bounds_(self,centroid):
+        l = (centroid - 0.5*self.res).reshape(-1,1)
+        u = (centroid + 0.5*self.res).reshape(-1,1)
+        return(np.hstack((l,u)))
         
     def _check_partition_(self,lower,upper,interval):
         if (upper-lower)%interval != 0:
@@ -66,7 +79,7 @@ class NcSpatial(object):
         
     def _do_partition_(self,lower,upper,interval):
         self._check_partition_(lower,upper,interval)
-        return(np.arange(lower,upper+interval,interval))
+        return(np.arange(lower,upper,interval)+(0.5*interval))
     
     
 class NcTime(object):
@@ -150,12 +163,14 @@ class NcWrite(object):
     >>> path = get_temp_path(suffix='.nc')
     >>> rootgrp = ncw.get_rootgrp(path)
     >>> rootgrp.variables["Prcp"][:].shape
-    (3, 4, 3)
+    (3, 3, 2)
     >>> ncw = NcWrite(ncvariable,ncspatial,nctime,nlevels=4)
     >>> path = get_temp_path(suffix='.nc')
     >>> rootgrp = ncw.get_rootgrp(path)
     >>> rootgrp.variables["Prcp"][:].shape
-    (3, 4, 4, 3)
+    (3, 4, 3, 2)
+    >>> rootgrp.variables["bounds_latitude"][:].shape
+    (3, 2)
     """
     
     def __init__(self,ncvariable,ncspatial,nctime,nlevels=1):
@@ -206,6 +221,13 @@ class NcWrite(object):
             var[:,:,:,:] = values
         else:
             var[:,:,:] = values
+            
+        if self.ncspatial.add_bounds:
+            rootgrp.createDimension('bound',2)
+            blats = rootgrp.createVariable('bounds_latitude','f4',('lat','bound'))
+            blons = rootgrp.createVariable('bounds_longitude','f4',('lon','bound'))
+            blats[:,:] = self._dsp['row_bnds']
+            blons[:,:] = self._dsp['col_bnds']
         
         return(rootgrp)
         
