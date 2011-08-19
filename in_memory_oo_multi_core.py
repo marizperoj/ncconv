@@ -67,7 +67,7 @@ class OcgDataset(object):
                                               self.calendar)
         
         ## these are base numpy arrays used by spatial operations.
-        
+
         ## four numpy arrays one for each bounding coordinate of a polygon
         self.min_col,self.min_row = np.meshgrid(self.col_bnds[:,0],self.row_bnds[:,0])
         self.max_col,self.max_row = np.meshgrid(self.col_bnds[:,1],self.row_bnds[:,1])
@@ -115,11 +115,21 @@ class OcgDataset(object):
         ## lutely necessary
         if polygon is not None:
             emin_col,emin_row,emax_col,emax_row = polygon.envelope.bounds
+            print emin_col,emin_row,emax_col,emax_row
+            print self.min_col
+            print self.max_col
+            print self.min_row
+            print self.max_row
             smin_col = self._contains_(self.min_col,emin_col,emax_col)
             smax_col = self._contains_(self.max_col,emin_col,emax_col)
             smin_row = self._contains_(self.min_row,emin_row,emax_row)
             smax_row = self._contains_(self.max_row,emin_row,emax_row)
+            print smin_col
+            print smax_col
+            print smin_row
+            print smax_row
             include = np.any((smin_col,smax_col),axis=0)*np.any((smin_row,smax_row),axis=0)
+            print include
         else:
             include = np.empty(self.min_row.shape,dtype=bool)
             include[:,:] = True
@@ -293,7 +303,7 @@ class OcgDataset(object):
             time.sleep(.1)
 
         if self.multiReset:
-            self.dataset = nc.Dataset(dataset,'r')
+            self.dataset = nc.Dataset(self.url,'r')
 
         ##check if data is 3 or 4 dimensions
         dimShape = len(self.dataset.variables[var_name].dimensions)
@@ -360,6 +370,7 @@ class OcgDataset(object):
             
         ## extract numpy data from the nc file
         q=args[0]
+        var = args[1]
         npd = self._get_numpy_data_(*args[1:],**kwds)
         ##check which flavor of climate data we are dealing with
         ocgShape = len(npd.shape)
@@ -432,13 +443,13 @@ class OcgDataset(object):
                         feature = dict(
                             id=ids.next(),
                             geometry=unioned,
-                            properties=dict({VAR:float(weighted[kk,:,:].sum()),
+                            properties=dict({var:float(weighted[kk,:,:].sum()),
                                             'timestamp':self.timevec[self._idxtime[kk]]}))
                     elif ocgShape==4:
                         feature = dict(
                             id=ids.next(),
                             geometry=unioned,
-                            properties=dict({VAR:list(float(weighted[kk,x,:,:].sum()) for x in xrange(len(levels))),
+                            properties=dict({var:list(float(weighted[kk,x,:,:].sum()) for x in xrange(len(levels))),
                                             'timestamp':self.timevec[self._idxtime[kk]],
                                             'levels':list(x for x in self.levels[levels])}))
                     #q.put(feature)
@@ -457,14 +468,14 @@ class OcgDataset(object):
                                     id=ids.next(),
                                     geometry=self._igrid[ii,jj],
                                     weight=1,
-                                    properties=dict({VAR:float(npd[kk,ii,jj]),
+                                    properties=dict({var:float(npd[kk,ii,jj]),
                                                     'timestamp':self.timevec[self._idxtime[kk]]}))
                             if ocgShape==4:
                                 feature = dict(
                                     id=ids.next(),
                                     geometry=self._igrid[ii,jj],
                                     weight=1,
-                                    properties=dict({VAR:list(float(npd[kk,x,ii,jj]) for x in xrange(len(levels))),
+                                    properties=dict({var:list(float(npd[kk,x,ii,jj]) for x in xrange(len(levels))),
                                                     'timestamp':self.timevec[self._idxtime[kk]],
                                                     'levels':list(x for x in self.levels[levels])}))
                             recombine[ctr].append(feature)
@@ -490,7 +501,7 @@ class OcgDataset(object):
                             feature = dict(
                                 id=ids.next(),
                                 geometry=self._igrid[ii,jj],
-                                properties=dict({VAR:float(data[kk]),
+                                properties=dict({var:float(data[kk]),
                                                 'timestamp':self.timevec[self._idxtime[kk]]}))
                             #if the data point covers a partial pixel or isn't clipped add it to the recombine set, otherwise leave it alone
                             if self._weights[ii,jj] < 1 or (self._pgrid[ii,jj] and not clip):
@@ -734,7 +745,7 @@ def multipolygon_multicore_operation(dataset,var,polygons,time_range=None,clip=N
             for x in recombine:
                 if key in x:
                     cur.append(x[key])
-            print cur
+            #print cur
 
             #if there is only 1 feature, it is unique so toss it into the element list
             if len(cur)==1:
@@ -757,7 +768,7 @@ def multipolygon_multicore_operation(dataset,var,polygons,time_range=None,clip=N
 
     #expand elements
     dtime = time.time()
-    if not levels == None:
+    if not (levels == None):
         for x in elements:
             for i in xrange(len(levels)):
                 e = x.copy()
@@ -765,6 +776,8 @@ def multipolygon_multicore_operation(dataset,var,polygons,time_range=None,clip=N
                 e['properties'][var] = e['properties'][var][i]
                 e['properties']['levels'] = e['properties']['levels'][i]
                 elements2.append(e)
+    else:
+        elements2 = elements
     print "expansion time: ",time.time()-dtime
     print(repr(len(elements2)))
     return(elements2)
