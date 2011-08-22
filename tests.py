@@ -9,7 +9,7 @@ import in_memory_oo_multi_core as ncconv
 
 class TestSimpleNc(unittest.TestCase):
 
-    def get_uri(self,bounds=Polygon(((0,0),(10,0),(10,15),(0,15))),rng=[datetime.datetime(2007,10,1),datetime.datetime(2007,10,3)],res=5,constant=5,nlevels=1,path=None,bnds=True):
+    def get_uri(self,bounds=Polygon(((0,0),(10,0),(10,15),(0,15))),rng=[datetime.datetime(2007,10,1),datetime.datetime(2007,10,3)],res=5,constant=5,nlevels=1,path=None,bnds=True,seed=None):
         """
         constant=5 -- provides a constant value when generating data to fill
             a NC variable. set to None to generate random values.
@@ -21,7 +21,7 @@ class TestSimpleNc(unittest.TestCase):
         interval = datetime.timedelta(days=1)
         nctime = NcTime(rng,interval)
         
-        ncvariable = NcVariable("Prcp","mm",constant=constant)
+        ncvariable = NcVariable("Prcp","mm",constant=constant,seed=seed)
         
         ncw = NcWrite(ncvariable,ncspatial,nctime,nlevels=nlevels)
         uri = ncw.write(path)
@@ -43,9 +43,8 @@ class TestSimpleNc(unittest.TestCase):
 
 
     def setUp(self):
-        self.singleLayer = self.get_uri(bounds=Polygon(((0,0),(40,0),(40,20),(0,40))),rng=[datetime.datetime(2000,1,1),datetime.datetime(2000,1,10)],res=10)
-        self.multiLayer = self.get_uri(nlevels=4)
-        self.randomized = self.get_uri(constant=None,nlevels=4)
+        self.singleLayer = self.get_uri(bounds=Polygon(((0,0),(40,0),(40,20),(0,40))),rng=[datetime.datetime(2000,1,1),datetime.datetime(2000,1,10)],res=10,constant=None,seed=1)
+        self.multiLayer = self.get_uri(bounds=Polygon(((0,0),(40,0),(40,20),(0,40))),rng=[datetime.datetime(2000,1,1),datetime.datetime(2000,1,10)],res=10,constant=None,seed=1,nlevels=4)
 
     def _access(self,uri,polygons,temporal,dissolve,clip,levels,subdivide,subres):
         POLYINT = polygons
@@ -81,6 +80,70 @@ class TestSimpleNc(unittest.TestCase):
 
         return elements
 
+
+#----------------------------------time, layers-----------------------------
+
+    def test_LSSlMdRcd(self):
+        "Local file, Single core, Single layer, Multiple date, Single Rectangle, Clip=False, Dissolve=False"
+        #pick one point in the upper left
+        layer = self.singleLayer
+        poly = Polygon(((0,0),(10,0),(10,10),(0,10))) 
+        time = [datetime.datetime(2000,1,1),datetime.datetime(2000,1,10)]
+        levels = None
+        subdivide = False
+        subres = 'detect'
+        elements = self._access(layer,poly,time,False,False,levels,subdivide,subres)
+
+        self.assertEqual(len(elements),10)
+
+        c = [x['properties']['timestamp'].strftime("%Y%m%d") for x in elements]
+        d = [repr(x) for x in xrange(20000101,20000111)]
+        self.assertEqual(c,d)
+
+        time = [datetime.datetime(2000,1,5),datetime.datetime(2000,1,7)]
+        elements = self._access(layer,poly,time,False,False,levels,subdivide,subres)
+
+        self.assertEqual(len(elements),3)
+
+        c = [x['properties']['timestamp'].strftime("%Y%m%d") for x in elements]
+        d = [repr(x) for x in xrange(20000105,20000108)]
+        self.assertEqual(c,d)
+
+    def test_LSMlSdRcd(self):
+        "Local file, Single core, Single layer, Multiple date, Single Rectangle, Clip=False, Dissolve=False"
+        #pick one point in the upper left
+        layer = self.multiLayer
+        poly = Polygon(((0,0),(10,0),(10,10),(0,10))) 
+        time = [datetime.datetime(2000,1,1),datetime.datetime(2000,1,1)]
+        levels = [0]
+        subdivide = False
+        subres = 'detect'
+        elements = self._access(layer,poly,time,False,False,levels,subdivide,subres)
+
+        self.assertEqual(len(elements),1)
+
+        c = [round(x['properties']['Prcp'],6) for x in elements]
+        self.assertTrue(round(1.62434536,6) in c)
+
+
+        levels = [0,1,2,3]
+        elements = self._access(layer,poly,time,False,False,levels,subdivide,subres)
+
+        self.assertEqual(len(elements),4)
+
+        c = [round(x['properties']['Prcp'],6) for x in elements]
+        self.assertTrue(round(1.62434536,6) in c and round(.172428208,6) in c and round(.687172700,6) in c and round(.120158952,6) in c)
+
+        levels = [1,3]
+        elements = self._access(layer,poly,time,False,False,levels,subdivide,subres)
+
+        self.assertEqual(len(elements),2)
+
+        c = [round(x['properties']['Prcp'],6) for x in elements]
+        self.assertTrue(round(.172428208,6) in c and round(.120158952,6) in c)
+
+#----------------------------------single thread tests----------------------------
+
     def test_LSSlSdRcd(self):
         "Local file, Single core, Single layer, Single date, Single Rectangle, Clip=False, Dissolve=False"
         #pick one point in the upper left
@@ -89,7 +152,7 @@ class TestSimpleNc(unittest.TestCase):
         time = [datetime.datetime(2000,1,1),datetime.datetime(2000,1,1)]
         levels = None
         subdivide = False
-        subres = 'Detect'
+        subres = 'detect'
         elements = self._access(layer,poly,time,False,False,levels,subdivide,subres)
 
         self.assertEqual(len(elements),1)
@@ -146,6 +209,24 @@ class TestSimpleNc(unittest.TestCase):
         self.assertTrue((5,25) in c and (15,25) in c and (25,25) in c and (35,25) in c)
         self.assertTrue((5,35) in c and (15,35) in c and (25,35) in c and (35,35) in c)
 
+    def test_LSSlSdIcd(self):
+        "Local file, Single core, Single layer, Single date, Irregular Polygon, Clip=False, Dissolve=True"
+        #pick one point in the upper left
+        layer = self.singleLayer
+        poly = Polygon(((0,0),(0,10),(30,40),(40,40),(40,30),(10,0)))
+        time = [datetime.datetime(2000,1,1),datetime.datetime(2000,1,1)]
+        levels = None
+        subdivide = False
+        subres = 'detect'
+        elements = self._access(layer,poly,time,False,False,levels,subdivide,subres)
+
+        self.assertEqual(len(elements),10)
+        c = [self._getCtrd(x) for x in elements]
+
+        self.assertTrue((5,5) in c and (15,15) in c and (25,25) in c and (35,35) in c)
+        self.assertTrue((15,5) in c and (25,15) in c and (35,25) in c)
+        self.assertTrue((5,15) in c and (15,25) in c and (25,35) in c)
+
 
     def test_LSSlSdRCd(self):
         "Local file, Single core, Single layer, Single date, Single Rectangle, Clip=True, Dissolve=False"
@@ -155,7 +236,7 @@ class TestSimpleNc(unittest.TestCase):
         time = [datetime.datetime(2000,1,1),datetime.datetime(2000,1,1)]
         levels = None
         subdivide = False
-        subres = 'Detect'
+        subres = 'detect'
 
         elements = self._access(layer,poly,time,False,True,levels,subdivide,subres)
         self.assertEqual(len(elements),1)
@@ -186,7 +267,7 @@ class TestSimpleNc(unittest.TestCase):
         #reduce selection by 5 units
         poly = Polygon(((5,5),(35,5),(35,35),(5,35)))
         elements = self._access(layer,poly,time,False,True,levels,subdivide,subres)
-        print elements
+        #print elements
         self.assertEqual(len(elements),16)
 
         c = [self._getCtrd(x) for x in elements]
@@ -195,6 +276,392 @@ class TestSimpleNc(unittest.TestCase):
         self.assertTrue((7.5,25) in c and (15,25) in c and (25,25) in c and (32.5,25) in c)
         self.assertTrue((7.5,32.5) in c and (15,32.5) in c and (25,32.5) in c and (32.5,32.5) in c)
 
+    def test_LSSlSdIcd(self):
+        "Local file, Single core, Single layer, Single date, Irregular Polygon, Clip=False, Dissolve=True"
+        #pick one point in the upper left
+        layer = self.singleLayer
+        poly = Polygon(((0,0),(0,10),(30,40),(40,40),(40,30),(10,0)))
+        time = [datetime.datetime(2000,1,1),datetime.datetime(2000,1,1)]
+        levels = None
+        subdivide = False
+        subres = 'detect'
+        elements = self._access(layer,poly,time,False,True,levels,subdivide,subres)
+
+        self.assertEqual(len(elements),10)
+        c = [(round(self._getCtrd(x)[0],6),round(self._getCtrd(x)[1],6)) for x in elements]
+
+        self.assertTrue((5,5) in c and (15,15) in c and (25,25) in c and (35,35) in c)
+        self.assertTrue((round(15-5/3.0,6),round(5+5/3.0,6)) in c and (round(25-5/3.0,6),round(15+5/3.0,6)) in c and (round(35-5/3.0,6),round(25+5/3.0,6)) in c)
+        self.assertTrue((round(5+5/3.0,6),round(15-5/3.0,6)) in c and (round(15+5/3.0,6),round(25-5/3.0,6)) in c and (round(25+5/3.0,6),round(35-5/3.0,6)) in c)
+
+    def test_LSSlSdRcD(self):
+        "Local file, Single core, Single layer, Single date, Single Rectangle, Clip=False, Dissolve=True"
+        #pick one point in the upper left
+        layer = self.singleLayer
+        poly = Polygon(((0,0),(10,0),(10,10),(0,10))) 
+        time = [datetime.datetime(2000,1,1),datetime.datetime(2000,1,1)]
+        levels = None
+        subdivide = False
+        subres = 'detect'
+        elements = self._access(layer,poly,time,True,False,levels,subdivide,subres)
+
+        self.assertEqual(len(elements),1)
+        self.assertEqual(self._getCtrd(elements[0]),(5,5))
+        self.assertAlmostEqual(elements[0]['properties']['Prcp'],1.62434536,6)
+
+
+        poly = Polygon(((0,0),(40,0),(40,40),(0,40)))
+        elements = self._access(layer,poly,time,True,False,levels,subdivide,subres)
+
+        self.assertEqual(len(elements),1)
+        self.assertEqual(self._getCtrd(elements[0]),(20,20))
+        self.assertAlmostEqual(elements[0]['properties']['Prcp'],1.033812345,6)
+
+    def test_LSSlSdIcD(self):
+        "Local file, Single core, Single layer, Single date, Irregular Polygon, Clip=False, Dissolve=True"
+        #pick one point in the upper left
+        layer = self.singleLayer
+        poly = Polygon(((2.5,2.5),(17.5,2.5),(17.5,17.5),(2.5,17.5))) 
+        time = [datetime.datetime(2000,1,1),datetime.datetime(2000,1,1)]
+        levels = None
+        subdivide = False
+        subres = 'detect'
+        elements = self._access(layer,poly,time,True,False,levels,subdivide,subres)
+
+        self.assertEqual(len(elements),1)
+        self.assertEqual(self._getCtrd(elements[0]),(10,10))
+        self.assertAlmostEqual(elements[0]['properties']['Prcp'],1.350762025,6)
+
+
+        poly = Polygon(((2.5,2.5),(2.5,37.5),(37.5,37.5),(37.5,2.5)))
+        elements = self._access(layer,poly,time,True,False,levels,subdivide,subres)
+
+        self.assertEqual(len(elements),1)
+        self.assertEqual(self._getCtrd(elements[0]),(20,20))
+        self.assertAlmostEqual(elements[0]['properties']['Prcp'],1.033812345,6)
+
+
+        poly = Polygon(((0,0),(0,10),(30,40),(40,40),(40,30),(10,0)))
+        elements = self._access(layer,poly,time,True,False,levels,subdivide,subres)
+
+        self.assertEqual(len(elements),1)
+        self.assertEqual(self._getCtrd(elements[0]),(20,20))
+        self.assertAlmostEqual(elements[0]['properties']['Prcp'],1.31531396,6)
+
+    def test_LSSlSdRCD(self):
+        "Local file, Single core, Single layer, Single date, Single Rectangle, Clip=True, Dissolve=True"
+        #pick one point in the upper left
+        layer = self.singleLayer
+        poly = Polygon(((0,0),(10,0),(10,10),(0,10))) 
+        time = [datetime.datetime(2000,1,1),datetime.datetime(2000,1,1)]
+        levels = None
+        subdivide = False
+        subres = 'detect'
+        elements = self._access(layer,poly,time,True,True,levels,subdivide,subres)
+
+        self.assertEqual(len(elements),1)
+        self.assertEqual(self._getCtrd(elements[0]),(5,5))
+        self.assertAlmostEqual(elements[0]['properties']['Prcp'],1.62434536,6)
+
+        #pick everything
+        poly = Polygon(((0,0),(40,0),(40,40),(0,40)))
+        elements = self._access(layer,poly,time,True,True,levels,subdivide,subres)
+
+        self.assertEqual(len(elements),1)
+        self.assertEqual(self._getCtrd(elements[0]),(20,20))
+        self.assertAlmostEqual(elements[0]['properties']['Prcp'],1.033812345,6)
+
+    def test_LSSlSdICD(self):
+        "Local file, Single core, Single layer, Single date, Irregular Polygon, Clip=False, Dissolve=True"
+        #pick one point in the upper left
+        layer = self.singleLayer
+        poly = Polygon(((2.5,2.5),(17.5,2.5),(17.5,17.5),(2.5,17.5))) 
+        time = [datetime.datetime(2000,1,1),datetime.datetime(2000,1,1)]
+        levels = None
+        subdivide = False
+        subres = 'detect'
+        elements = self._access(layer,poly,time,True,True,levels,subdivide,subres)
+
+        self.assertEqual(len(elements),1)
+        self.assertEqual(self._getCtrd(elements[0]),(10,10))
+        self.assertAlmostEqual(elements[0]['properties']['Prcp'],1.350762025,6)
+
+
+        poly = Polygon(((5,5),(5,35),(35,35),(35,5)))
+        elements = self._access(layer,poly,time,True,True,levels,subdivide,subres)
+
+        self.assertEqual(len(elements),1)
+        self.assertEqual(self._getCtrd(elements[0]),(20,20))
+        self.assertAlmostEqual(elements[0]['properties']['Prcp'],1.124389726,6)
+
+
+        poly = Polygon(((0,0),(0,10),(30,40),(40,40),(40,30),(10,0)))
+        #print poly.envelope
+        elements = self._access(layer,poly,time,True,True,levels,subdivide,subres)
+
+        self.assertEqual(len(elements),1)
+        self.assertEqual(self._getCtrd(elements[0]),(20,20))
+        self.assertAlmostEqual(elements[0]['properties']['Prcp'],1.402930205,6)
+
+#----------------------------------multi thread tests----------------------------
+
+    def test_LMSlSdRcd(self):
+        "Local file, Multi core, Single layer, Single date, Single Rectangle, Clip=False, Dissolve=False"
+        #pick one point in the upper left
+        layer = self.singleLayer
+        poly = Polygon(((0,0),(10,0),(10,10),(0,10))) 
+        time = [datetime.datetime(2000,1,1),datetime.datetime(2000,1,1)]
+        levels = None
+        subdivide = True
+        subres = 'detect'
+        elements = self._access(layer,poly,time,False,False,levels,subdivide,subres)
+
+        self.assertEqual(len(elements),1)
+        self.assertEqual(self._getCtrd(elements[0]),(5,5))
+
+        #pick one point in the middle
+        poly = Polygon(((10,10),(20,10),(20,20),(10,20)))
+        elements = self._access(layer,poly,time,False,False,levels,subdivide,subres)
+        self.assertEqual(len(elements),1)
+
+        c = [self._getCtrd(x) for x in elements]
+        self.assertTrue((15,15) in c)
+        
+        #pick 2 elements
+        poly = Polygon(((0,0),(20,0),(20,10),(0,10)))
+        elements = self._access(layer,poly,time,False,False,levels,subdivide,subres)
+        self.assertEqual(len(elements),2)
+
+        c = [self._getCtrd(x) for x in elements]
+        self.assertTrue((5,5) in c and (15,5) in c)
+
+        #pick the top row
+        poly = Polygon(((0,0),(40,0),(40,10),(0,10)))
+        elements = self._access(layer,poly,time,False,False,levels,subdivide,subres)
+        self.assertEqual(len(elements),4)
+
+        c = [self._getCtrd(x) for x in elements]
+        self.assertTrue((5,5) in c and (15,5) in c and (25,5 in c) and (35,5) in c)
+
+        #pick the left row
+        poly = Polygon(((0,0),(10,0),(10,40),(0,40)))
+        elements = self._access(layer,poly,time,False,False,levels,subdivide,subres)
+        self.assertEqual(len(elements),4)
+
+        c = [self._getCtrd(x) for x in elements]
+        self.assertTrue((5,5) in c and (5,15) in c and (5,25 in c) and (5,35) in c)
+
+        #pick the upper everything but right and bottom row
+        poly = Polygon(((0,0),(20,0),(20,20),(0,20)))
+        elements = self._access(layer,poly,time,False,False,levels,subdivide,subres)
+        self.assertEqual(len(elements),4)
+
+        c = [self._getCtrd(x) for x in elements]
+        self.assertTrue((5,5) in c and (15,5) in c and (15,15) in c and (5,15) in c)
+
+        #pick everything
+        poly = Polygon(((0,0),(40,0),(40,40),(0,40)))
+        elements = self._access(layer,poly,time,False,False,levels,subdivide,subres)
+        self.assertEqual(len(elements),16)
+
+        c = [self._getCtrd(x) for x in elements]
+        self.assertTrue((5, 5) in c and (15, 5) in c and (25, 5) in c and (35, 5) in c)
+        self.assertTrue((5,15) in c and (15,15) in c and (25,15) in c and (35,15) in c)
+        self.assertTrue((5,25) in c and (15,25) in c and (25,25) in c and (35,25) in c)
+        self.assertTrue((5,35) in c and (15,35) in c and (25,35) in c and (35,35) in c)
+
+    def test_LMSlSdIcd(self):
+        "Local file, Multi core, Single layer, Single date, Irregular Polygon, Clip=False, Dissolve=True"
+        #pick one point in the upper left
+        layer = self.singleLayer
+        poly = Polygon(((0,0),(0,10),(30,40),(40,40),(40,30),(10,0)))
+        time = [datetime.datetime(2000,1,1),datetime.datetime(2000,1,1)]
+        levels = None
+        subdivide = True
+        subres = 'detect'
+        elements = self._access(layer,poly,time,False,False,levels,subdivide,subres)
+
+        self.assertEqual(len(elements),10)
+        c = [self._getCtrd(x) for x in elements]
+
+        self.assertTrue((5,5) in c and (15,15) in c and (25,25) in c and (35,35) in c)
+        self.assertTrue((15,5) in c and (25,15) in c and (35,25) in c)
+        self.assertTrue((5,15) in c and (15,25) in c and (25,35) in c)
+
+
+    def test_LMSlSdRCd(self):
+        "Local file, Multi core, Single layer, Single date, Single Rectangle, Clip=True, Dissolve=False"
+        #pick one point in the middle
+        layer = self.singleLayer
+        poly = Polygon(((10,10),(20,10),(20,20),(10,20)))
+        time = [datetime.datetime(2000,1,1),datetime.datetime(2000,1,1)]
+        levels = None
+        subdivide = True
+        subres = 'detect'
+
+        elements = self._access(layer,poly,time,False,True,levels,subdivide,subres)
+        self.assertEqual(len(elements),1)
+
+        c = [self._getCtrd(x) for x in elements]
+        self.assertTrue((15,15) in c)
+
+
+        #move the area to cover the intersection of 4 points
+        poly = Polygon(((5,5),(15,5),(15,15),(5,15)))
+        elements = self._access(layer,poly,time,False,True,levels,subdivide,subres)
+        self.assertEqual(len(elements),4)
+
+        c = [self._getCtrd(x) for x in elements]
+        self.assertTrue((7.5, 7.5) in c and (12.5, 7.5) in c and (12.5, 12.5) in c and (7.5, 12.5) in c)
+
+        #pick everything
+        poly = Polygon(((0,0),(40,0),(40,40),(0,40)))
+        elements = self._access(layer,poly,time,False,True,levels,subdivide,subres)
+        self.assertEqual(len(elements),16)
+
+        c = [self._getCtrd(x) for x in elements]
+        self.assertTrue((5, 5) in c and (15, 5) in c and (25, 5) in c and (35, 5) in c)
+        self.assertTrue((5,15) in c and (15,15) in c and (25,15) in c and (35,15) in c)
+        self.assertTrue((5,25) in c and (15,25) in c and (25,25) in c and (35,25) in c)
+        self.assertTrue((5,35) in c and (15,35) in c and (25,35) in c and (35,35) in c)
+
+        #reduce selection by 5 units
+        poly = Polygon(((5,5),(35,5),(35,35),(5,35)))
+        elements = self._access(layer,poly,time,False,True,levels,subdivide,subres)
+        #print elements
+        self.assertEqual(len(elements),16)
+
+        c = [self._getCtrd(x) for x in elements]
+        self.assertTrue((7.5, 7.5) in c and (15, 7.5) in c and (25, 7.5) in c and (32.5, 7.5) in c)
+        self.assertTrue((7.5,15) in c and (15,15) in c and (25,15) in c and (32.5,15) in c)
+        self.assertTrue((7.5,25) in c and (15,25) in c and (25,25) in c and (32.5,25) in c)
+        self.assertTrue((7.5,32.5) in c and (15,32.5) in c and (25,32.5) in c and (32.5,32.5) in c)
+
+    def test_LMSlSdIcd(self):
+        "Local file, Multi core, Single layer, Single date, Irregular Polygon, Clip=False, Dissolve=True"
+        #pick one point in the upper left
+        layer = self.singleLayer
+        poly = Polygon(((0,0),(0,10),(30,40),(40,40),(40,30),(10,0)))
+        time = [datetime.datetime(2000,1,1),datetime.datetime(2000,1,1)]
+        levels = None
+        subdivide = True
+        subres = 'detect'
+        elements = self._access(layer,poly,time,False,True,levels,subdivide,subres)
+
+        self.assertEqual(len(elements),10)
+        c = [(round(self._getCtrd(x)[0],6),round(self._getCtrd(x)[1],6)) for x in elements]
+
+        self.assertTrue((5,5) in c and (15,15) in c and (25,25) in c and (35,35) in c)
+        self.assertTrue((round(15-5/3.0,6),round(5+5/3.0,6)) in c and (round(25-5/3.0,6),round(15+5/3.0,6)) in c and (round(35-5/3.0,6),round(25+5/3.0,6)) in c)
+        self.assertTrue((round(5+5/3.0,6),round(15-5/3.0,6)) in c and (round(15+5/3.0,6),round(25-5/3.0,6)) in c and (round(25+5/3.0,6),round(35-5/3.0,6)) in c)
+
+    def test_LMSlSdRcD(self):
+        "Local file, Multi core, Single layer, Single date, Single Rectangle, Clip=False, Dissolve=True"
+        #pick one point in the upper left
+        layer = self.singleLayer
+        poly = Polygon(((0,0),(10,0),(10,10),(0,10))) 
+        time = [datetime.datetime(2000,1,1),datetime.datetime(2000,1,1)]
+        levels = None
+        subdivide = True
+        subres = 'detect'
+        elements = self._access(layer,poly,time,True,False,levels,subdivide,subres)
+
+        self.assertEqual(len(elements),1)
+        self.assertEqual(self._getCtrd(elements[0]),(5,5))
+        self.assertAlmostEqual(elements[0]['properties']['Prcp'],1.62434536,6)
+
+
+        poly = Polygon(((0,0),(40,0),(40,40),(0,40)))
+        elements = self._access(layer,poly,time,True,False,levels,subdivide,subres)
+
+        self.assertEqual(len(elements),1)
+        self.assertEqual(self._getCtrd(elements[0]),(20,20))
+        self.assertAlmostEqual(elements[0]['properties']['Prcp'],1.033812345,6)
+
+    def test_LMSlSdIcD(self):
+        "Local file, Multi core, Single layer, Single date, Irregular Polygon, Clip=False, Dissolve=True"
+        #pick one point in the upper left
+        layer = self.singleLayer
+        poly = Polygon(((2.5,2.5),(17.5,2.5),(17.5,17.5),(2.5,17.5))) 
+        time = [datetime.datetime(2000,1,1),datetime.datetime(2000,1,1)]
+        levels = None
+        subdivide = True
+        subres = 'detect'
+        elements = self._access(layer,poly,time,True,False,levels,subdivide,subres)
+
+        self.assertEqual(len(elements),1)
+        self.assertEqual(self._getCtrd(elements[0]),(10,10))
+        self.assertAlmostEqual(elements[0]['properties']['Prcp'],1.350762025,6)
+
+
+        poly = Polygon(((2.5,2.5),(2.5,37.5),(37.5,37.5),(37.5,2.5)))
+        elements = self._access(layer,poly,time,True,False,levels,subdivide,subres)
+
+        self.assertEqual(len(elements),1)
+        self.assertEqual(self._getCtrd(elements[0]),(20,20))
+        self.assertAlmostEqual(elements[0]['properties']['Prcp'],1.033812345,6)
+
+
+        poly = Polygon(((0,0),(0,10),(30,40),(40,40),(40,30),(10,0)))
+        elements = self._access(layer,poly,time,True,False,levels,subdivide,subres)
+
+        self.assertEqual(len(elements),1)
+        self.assertEqual(self._getCtrd(elements[0]),(20,20))
+        self.assertAlmostEqual(elements[0]['properties']['Prcp'],1.31531396,6)
+
+    def test_LMSlSdRCD(self):
+        "Local file, Multi core, Single layer, Single date, Single Rectangle, Clip=True, Dissolve=True"
+        #pick one point in the upper left
+        layer = self.singleLayer
+        poly = Polygon(((0,0),(10,0),(10,10),(0,10))) 
+        time = [datetime.datetime(2000,1,1),datetime.datetime(2000,1,1)]
+        levels = None
+        subdivide = True
+        subres = 'detect'
+        elements = self._access(layer,poly,time,True,True,levels,subdivide,subres)
+
+        self.assertEqual(len(elements),1)
+        self.assertEqual(self._getCtrd(elements[0]),(5,5))
+        self.assertAlmostEqual(elements[0]['properties']['Prcp'],1.62434536,6)
+
+        #pick everything
+        poly = Polygon(((0,0),(40,0),(40,40),(0,40)))
+        elements = self._access(layer,poly,time,True,True,levels,subdivide,subres)
+
+        self.assertEqual(len(elements),1)
+        self.assertEqual(self._getCtrd(elements[0]),(20,20))
+        self.assertAlmostEqual(elements[0]['properties']['Prcp'],1.033812345,6)
+
+    def test_LMSlSdICD(self):
+        "Local file, Multi core, Single layer, Single date, Irregular Polygon, Clip=False, Dissolve=True"
+        #pick one point in the upper left
+        layer = self.singleLayer
+        poly = Polygon(((2.5,2.5),(17.5,2.5),(17.5,17.5),(2.5,17.5))) 
+        time = [datetime.datetime(2000,1,1),datetime.datetime(2000,1,1)]
+        levels = None
+        subdivide = True
+        subres = 'detect'
+        elements = self._access(layer,poly,time,True,True,levels,subdivide,subres)
+
+        self.assertEqual(len(elements),1)
+        self.assertEqual(self._getCtrd(elements[0]),(10,10))
+        self.assertAlmostEqual(elements[0]['properties']['Prcp'],1.350762025,6)
+
+
+        poly = Polygon(((5,5),(5,35),(35,35),(35,5)))
+        elements = self._access(layer,poly,time,True,True,levels,subdivide,subres)
+
+        self.assertEqual(len(elements),1)
+        self.assertEqual(self._getCtrd(elements[0]),(20,20))
+        self.assertAlmostEqual(elements[0]['properties']['Prcp'],1.124389726,6)
+
+
+        poly = Polygon(((0,0),(0,10),(30,40),(40,40),(40,30),(10,0)))
+        elements = self._access(layer,poly,time,True,True,levels,subdivide,subres)
+
+        self.assertEqual(len(elements),1)
+        self.assertEqual(self._getCtrd(elements[0]),(20,20))
+        self.assertAlmostEqual(elements[0]['properties']['Prcp'],1.402930205,6)
 
 if __name__ == "__main__":
     #import sys;sys.argv = ['', 'Test.testName']

@@ -107,7 +107,7 @@ class OcgDataset(object):
         ## hold point objects
         self._jgrid = np.empty(self.min_row.shape,dtype=object)
         ##holds locations that would be partial if the data were clipped for use in dissolve
-        self._pgrid = np.empty(self.min_row.shape,dtype=bool)
+        self._pgrid = np.zeros(self.min_row.shape,dtype=bool)
         ## holds weights for area weighting in the case of a dissolve
         self._weights = np.zeros(self.min_row.shape)
         
@@ -115,22 +115,22 @@ class OcgDataset(object):
         ## lutely necessary
         if polygon is not None:
             emin_col,emin_row,emax_col,emax_row = polygon.envelope.bounds
-            print emin_col,emin_row,emax_col,emax_row
-            print self.min_col
-            print self.max_col
-            print self.min_row
-            print self.max_row
+            #print emin_col,emin_row,emax_col,emax_row
+            #print self.min_col
+            #print self.max_col
+            #print self.min_row
+            #print self.max_row
             smin_col = self._contains_(self.min_col,emin_col,emax_col)
             smax_col = self._contains_(self.max_col,emin_col,emax_col)
             smin_row = self._contains_(self.min_row,emin_row,emax_row)
             smax_row = self._contains_(self.max_row,emin_row,emax_row)
-            print smin_col
-            print smax_col
-            print smin_row
-            print smax_row
+            #print smin_col
+            #print smax_col
+            #print smin_row
+            #print smax_row
             #include = smin_col*smax_col*smin_row*smax_row
             include = np.any((smin_col,smax_col),axis=0)*np.any((smin_row,smax_row),axis=0)
-            print include
+            #print include
         else:
             include = np.empty(self.min_row.shape,dtype=bool)
             include[:,:] = True
@@ -188,7 +188,7 @@ class OcgDataset(object):
             ## create the polygon
             g = self._make_poly_((self.min_row[ii,jj],self.max_row[ii,jj]),
                                  (self.min_col[ii,jj],self.max_col[ii,jj]))
-            print g.wkt
+            #print g.wkt
             ## add the polygon if it intersects the aoi of if all data is being
             ## returned.
             if polygon:
@@ -208,10 +208,11 @@ class OcgDataset(object):
             else:
                 ng = g
                 if g.intersection(polygon).area<g.area and g.intersection(polygon).area>0:
+                    #print "NARG"
                     self._pgrid[ii,jj]=True
             ## calculate the weight
             w = ng.area/prearea
-            print w
+            #print w
             ## a polygon can have a true intersects but actually not overlap
             ## i.e. shares a border.
             if w > 0:
@@ -220,7 +221,8 @@ class OcgDataset(object):
                 self._jgrid[ii,jj] = (g.centroid.x,g.centroid.y)
         ## the mask is used as a subset
         self._mask = self._weights > 0
-        print self._mask
+        #print self._mask
+        #print self._pgrid
 #        self._weights = self._weights/self._weights.sum()
     
     def _make_poly_(self,rtup,ctup):
@@ -422,7 +424,7 @@ class OcgDataset(object):
                     if not clip:
                         pselect = select*self._pgrid
                         select *= np.invert(self._pgrid)
-                    #print select
+                    #print np.invert(self._pgrid)
 
                     #print self._mask
                     ## select those geometries
@@ -434,11 +436,12 @@ class OcgDataset(object):
                         ## select the weight subset and normalize to unity
                         sub_weights = self._weights*select
                         #print sub_weights
-                        #print sub_weights.sum()
                         #print unioned.area
                         self._weights = sub_weights/sub_weights.sum()
                         ## apply the weighting
                         weighted = npd*self._weights
+                        #print self._weights
+                        #print weighted
                         #print (npd*sub_weights).sum()
                         #print select.sum()
                         #weighted = npd/sub_weights.sum()*sub_weights
@@ -451,19 +454,20 @@ class OcgDataset(object):
                         feature = dict(
                             id=ids.next(),
                             geometry=unioned,
-                            properties=dict({var:float(weighted[kk,:,:].sum()),
+                            properties=dict({var:weighted[kk,:,:].sum(),
                                             'timestamp':self.timevec[self._idxtime[kk]]}))
                     elif ocgShape==4:
                         feature = dict(
                             id=ids.next(),
                             geometry=unioned,
-                            properties=dict({var:list(float(weighted[kk,x,:,:].sum()) for x in xrange(len(levels))),
+                            properties=dict({var:list(weighted[kk,x,:,:].sum() for x in xrange(len(levels))),
                                             'timestamp':self.timevec[self._idxtime[kk]],
                                             'levels':list(x for x in self.levels[levels])}))
                     #q.put(feature)
                     if not(parent == None) and dissolve:
                         feature['weight']=sub_weights.sum()
                     features.append(feature)
+                    #print sub_weights
 
                 if not clip:
                     for ii,jj in self._itr_array_(pselect):
@@ -475,21 +479,22 @@ class OcgDataset(object):
                                 feature = dict(
                                     id=ids.next(),
                                     geometry=self._igrid[ii,jj],
-                                    weight=1,
-                                    properties=dict({var:float(npd[kk,ii,jj]),
+                                    weight=1.0,
+                                    properties=dict({var:npd[kk,ii,jj],
                                                     'timestamp':self.timevec[self._idxtime[kk]]}))
+                                #print npd[kk,ii,jj]
                             if ocgShape==4:
                                 feature = dict(
                                     id=ids.next(),
                                     geometry=self._igrid[ii,jj],
-                                    weight=1,
-                                    properties=dict({var:list(float(npd[kk,x,ii,jj]) for x in xrange(len(levels))),
+                                    weight=1.0,
+                                    properties=dict({var:list(npd[kk,x,ii,jj] for x in xrange(len(levels))),
                                                     'timestamp':self.timevec[self._idxtime[kk]],
                                                     'levels':list(x for x in self.levels[levels])}))
                             recombine[ctr].append(feature)
                             
         else:
-            print self._mask
+            #print self._mask
             ctr = None
             ## loop for each feature. no dissolving.
             for ii,jj in self._itr_array_(self._mask):
@@ -502,7 +507,7 @@ class OcgDataset(object):
                         ctr = self._jgrid[ii,jj]
                         recombine[ctr] = []
                     ## extract the data and convert any mask values
-                    print ocgShape
+                    #print ocgShape
                     if ocgShape == 3:
                         data = [self._is_masked_(da) for da in npd[:,ii,jj]]
                         for kk in range(len(data)):
@@ -533,7 +538,7 @@ class OcgDataset(object):
                             feature = dict(
                                 id=ids.next(),
                                 geometry=self._igrid[ii,jj],
-                                properties=dict({VAR:list(float(data[kk][x]) for x in xrange(len(levels))),
+                                properties=dict({var:list(float(data[kk][x]) for x in xrange(len(levels))),
                                                 'timestamp':self.timevec[self._idxtime[kk]],
                                                 'levels':list(x for x in self.levels[levels])}))
                             #q.put(feature)
@@ -573,21 +578,6 @@ def as_shp(elements,path=None):
     ocs.write()
     return(path)
 
-def multipolygon_operation(dataset,var,polygons,time_range=None,clip=None,dissolve=None,levels = None,ocgOpts=None):
-    elements = []
-    ncp = OcgDataset(dataset,**ocgOpts)
-    for ii,polygon in enumerate(polygons):
-        print(ii)
-        elements += ncp.extract_elements(var,
-                                         polygon=polygon,
-                                         time_range=time_range,
-                                         clip=clip,
-                                         dissolve=dissolve,
-                                         levels = levels)
-
-    print(repr(len(elements)))
-    return(elements)
-
 def multipolygon_multicore_operation(dataset,var,polygons,time_range=None,clip=None,dissolve=None,levels = None,ocgOpts=None,subdivide=False,subres='detect'):
 
     elements = []
@@ -612,20 +602,20 @@ def multipolygon_multicore_operation(dataset,var,polygons,time_range=None,clip=N
         print(ii)
 
         #if polygons have been specified and subdivide is True, each polygon will be subdivided
-        #into a gread with resolution of subres. If subres is undefined the resolution is half the square root of the area of the polygons envelope, or approximately 4 subpolygons
+        #into a grid with resolution of subres. If subres is undefined the resolution is half the square root of the area of the polygons envelope, or approximately 4 subpolygons
         if subdivide and not(polygons == None):
 
             #figure out the resolution and subdivide
             if subres == 'detect':
-                subpolys = make_shapely_grid(polygon,sqrt(polygon.envelope.area)/2.0,clip=clip)
+                subpolys = make_shapely_grid(polygon,sqrt(polygon.envelope.area)/2.0,clip=True)
             else:
-                subpolys = make_shapely_grid(polygon,subres,clip=clip)
+                subpolys = make_shapely_grid(polygon,subres,clip=True)
 
             #generate threads for each subpolygon
             for poly in subpolys:
                 if clip==False:
-                    poly = poly.intersection(polygon.envelope)
-                    if poly==None:
+                    poly2 = poly.intersection(polygon.envelope)
+                    if poly2==None:
                         continue
                 #print poly.intersection(polygon).wkt
                 p = Process(target = ncp.extract_elements,
@@ -655,7 +645,8 @@ def multipolygon_multicore_operation(dataset,var,polygons,time_range=None,clip=N
                                             'time_range':time_range,
                                             'clip':clip,
                                             'dissolve':dissolve,
-                                            'levels' : levels})
+                                            'levels' : levels,
+                                            'parentPoly':1})
             p.start()
             pl.append(p)
 
@@ -679,7 +670,7 @@ def multipolygon_multicore_operation(dataset,var,polygons,time_range=None,clip=N
         time.sleep(.1)
 
     #The subdivided geometry must be recombined into the original polygons
-    if subdivide and dissolve:
+    if dissolve:
         groups = {}
 
         #form groups of elements based on which polygon they belong to
@@ -714,7 +705,7 @@ def multipolygon_multicore_operation(dataset,var,polygons,time_range=None,clip=N
             subgroups = [[g[t] for g in group] for t in xrange(len(group[0]))]
 
             ta = sum([y['weight'] for y in subgroups[0]])
-            #print ta
+            print 't',ta
 
             #average the data values and form new features
             for subgroup in subgroups:
@@ -729,11 +720,12 @@ def multipolygon_multicore_operation(dataset,var,polygons,time_range=None,clip=N
                     #print total.area
                     #print avg
                 else:
+                    print (y['weight']/ta)
                     avg = sum([y['properties'][var]*(y['weight']/ta) for y in subgroup])
                     elements.append(    dict(
                                         id=subgroup[0]['id'],
                                         geometry=total,
-                                        properties=dict({VAR:avg,
+                                        properties=dict({var:avg,
                                                         'timestamp':subgroup[0]['properties']['timestamp']})))
     #hande recombining undissolved features
     else:

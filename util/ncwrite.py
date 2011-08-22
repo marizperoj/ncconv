@@ -145,7 +145,9 @@ class NcVariable(object):
             v = np.ones(shape)*self.constant
         else:
             if self.seed != None: np.random.seed(self.seed)
-            v = np.random.normal(size=shape)
+            v = abs(np.random.normal(size=shape))
+            #np.set_printoptions(precision=10)
+            #print repr(v)
         return(v)
         
     
