@@ -158,6 +158,11 @@ class TestSimpleNc(unittest.TestCase):
         self.assertEqual(len(elements),1)
         self.assertEqual(self._getCtrd(elements[0]),(5,5))
 
+        poly = Polygon(((0,0),(10,0),(0,10),(10,10),(0,0)))
+        elements = self._access(layer,poly,time,False,False,levels,subdivide,subres)
+
+        self.assertEqual(len(elements),0)
+
         #pick one point in the middle
         poly = Polygon(((10,10),(20,10),(20,20),(10,20)))
         elements = self._access(layer,poly,time,False,False,levels,subdivide,subres)
@@ -276,8 +281,8 @@ class TestSimpleNc(unittest.TestCase):
         self.assertTrue((7.5,25) in c and (15,25) in c and (25,25) in c and (32.5,25) in c)
         self.assertTrue((7.5,32.5) in c and (15,32.5) in c and (25,32.5) in c and (32.5,32.5) in c)
 
-    def test_LSSlSdIcd(self):
-        "Local file, Single core, Single layer, Single date, Irregular Polygon, Clip=False, Dissolve=True"
+    def test_LSSlSdICd(self):
+        "Local file, Single core, Single layer, Single date, Irregular Polygon, Clip=True, Dissolve=True"
         #pick one point in the upper left
         layer = self.singleLayer
         poly = Polygon(((0,0),(0,10),(30,40),(40,40),(40,30),(10,0)))
@@ -402,6 +407,28 @@ class TestSimpleNc(unittest.TestCase):
         self.assertEqual(len(elements),1)
         self.assertEqual(self._getCtrd(elements[0]),(20,20))
         self.assertAlmostEqual(elements[0]['properties']['Prcp'],1.402930205,6)
+
+    def test_LSSlSdMpCD(self):
+        "Local file, Single core, Single layer, Single date, Multiple Polygons, Clip=False, Dissolve=True"
+
+        layer = self.singleLayer
+        poly = [Polygon(((0,0),(10,0),(10,10),(0,10))), Polygon(((20,20),(30,20),(30,30),(20,30)))]
+        time = [datetime.datetime(2000,1,1),datetime.datetime(2000,1,1)]
+        levels = None
+        subdivide = False
+        subres = 'detect'
+        elements = self._access(layer,poly,time,True,False,levels,subdivide,subres)
+
+        self.assertEqual(len(elements),2)
+        c = [self._getCtrd(x) for x in elements]
+        self.assertTrue((5,5) in c and (25,25) in c)
+
+        poly = [Polygon(((0,0),(20,0),(20,20),(0,20))), Polygon(((0,10),(20,10),(20,30),(0,30)))]
+        elements = self._access(layer,poly,time,True,False,levels,subdivide,subres)
+
+        self.assertEqual(len(elements),2)
+        c = [self._getCtrd(x) for x in elements]
+        self.assertTrue((10,10) in c and (10,20) in c)
 
 #----------------------------------multi thread tests----------------------------
 
@@ -662,6 +689,102 @@ class TestSimpleNc(unittest.TestCase):
         self.assertEqual(len(elements),1)
         self.assertEqual(self._getCtrd(elements[0]),(20,20))
         self.assertAlmostEqual(elements[0]['properties']['Prcp'],1.402930205,6)
+
+    def test_LMSlSdMpCD(self):
+        "Local file, Single core, Single layer, Single date, Multiple Polygons, Clip=False, Dissolve=True"
+
+        layer = self.singleLayer
+        poly = [Polygon(((0,0),(10,0),(10,10),(0,10))), Polygon(((20,20),(30,20),(30,30),(20,30)))]
+        time = [datetime.datetime(2000,1,1),datetime.datetime(2000,1,1)]
+        levels = None
+        subdivide = True
+        subres = 'detect'
+        elements = self._access(layer,poly,time,True,False,levels,subdivide,subres)
+
+        self.assertEqual(len(elements),2)
+        c = [self._getCtrd(x) for x in elements]
+        self.assertTrue((5,5) in c and (25,25) in c)
+
+        poly = [Polygon(((0,0),(20,0),(20,20),(0,20))), Polygon(((0,10),(20,10),(20,30),(0,30)))]
+        elements = self._access(layer,poly,time,True,False,levels,subdivide,subres)
+
+        self.assertEqual(len(elements),2)
+        c = [self._getCtrd(x) for x in elements]
+        self.assertTrue((10,10) in c and (10,20) in c)
+
+class TestOpenDapNC(unittest.TestCase):
+
+    def _getCtrd(self,element):
+        g = element['geometry']
+        return (g.centroid.x,g.centroid.y)
+
+    def _access(self,polygons,temporal,dissolve,clip,levels,subdivide,subres):
+        POLYINT = polygons
+        
+        dataset = 'http://hydra.fsl.noaa.gov/thredds/dodsC/oc_gis_downscaling.bccr_bcm2.sresa1b.Prcp.Prcp.1.aggregation.1'
+
+        TEMPORAL = temporal
+        DISSOLVE = dissolve
+        CLIP = clip
+        VAR = 'Prcp'
+        kwds = {
+            'rowbnds_name': 'bounds_latitude', 
+            'colbnds_name': 'bounds_longitude',
+            'time_units': 'days since 1950-1-1 00:00:0.0',
+        }
+        ## open the dataset for reading
+        ## make iterable if only a single polygon requested
+        if type(POLYINT) not in (list,tuple): POLYINT = [POLYINT]
+        ## convenience function for multiple polygons
+        elements = ncconv.multipolygon_multicore_operation(dataset,
+                                        VAR,
+                                        POLYINT,
+                                        time_range=TEMPORAL,
+                                        clip=CLIP,
+                                        dissolve=DISSOLVE,
+                                        levels = levels,
+                                        ocgOpts=kwds,
+                                        subdivide=subdivide,
+                                        subres = subres
+                                        )
+
+        return elements
+
+    def test_RSSlSdRcd(self):
+        "Local file, Single core, Single layer, Single date, Single Rectangle, Clip=False, Dissolve=False"
+        #pick one point in the upper left
+        poly = Polygon(((-120.125, 35.875), (-120.0, 35.875), (-120.0, 36.0), (-120.125, 36.0), (-120.125, 35.875)))
+        #      POLYGON ((-124.75  25.125,   -67.0   25.125, -67.0  52.875,  -124.75  52.875,   -124.75  25.125))
+        time = [datetime.datetime(1960,3,16),datetime.datetime(1960,4,16)]
+        levels = None
+        subdivide = False
+        subres = 'detect'
+        elements = self._access(poly,time,False,False,levels,subdivide,subres)
+
+        self.assertEqual(len(elements),1)
+        self.assertEqual(self._getCtrd(elements[0]),(-120.0625,35.9375))
+
+        poly=Polygon(((-120.125, 35.875), (-119.875, 35.875), (-119.875, 36.125), (-120.125, 36.125), (-120.125, 35.875)))
+        elements = self._access(poly,time,False,False,levels,subdivide,subres)
+
+        self.assertEqual(len(elements),4)
+        c = [self._getCtrd(x) for x in elements]
+        self.assertTrue((-120.0625,35.9375) in c and (-119.9375,35.9375) in c and (-120.0625,36.0625) in c and (-119.9375,36.0625) in c)
+
+    def test_RMSlSdRcd(self):
+        "Local file, Single core, Single layer, Single date, Single Rectangle, Clip=False, Dissolve=False"
+        #pick one point in the upper left
+        poly = None
+        time = [datetime.datetime(1960,3,16),datetime.datetime(1960,4,16)]
+        levels = None
+        subdivide = True
+        subres = 'detect'
+        elements = self._access(poly,time,False,False,levels,subdivide,subres)
+
+        self.assertEqual(len(elements),76019)
+    
+
+    #462 222
 
 if __name__ == "__main__":
     #import sys;sys.argv = ['', 'Test.testName']

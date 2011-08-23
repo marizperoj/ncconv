@@ -224,6 +224,8 @@ class OcgDataset(object):
         #print self._mask
         #print self._pgrid
 #        self._weights = self._weights/self._weights.sum()
+        #print self._weights
+        #print self._mask.shape
     
     def _make_poly_(self,rtup,ctup):
         """
@@ -306,6 +308,16 @@ class OcgDataset(object):
         
         ## hit the dataset and extract the block
         npd = None
+
+        if len(self._idxrow)==0:
+            print "Invalid Selection, unable to select row"
+            return
+        if len(self._idxcol)==0:
+            print "Invalid Selection, unable to select column"
+            return
+        if len(self._idxtime)==0:
+            print "Invalid Selection, unable to select time range"
+            return
         
         narg = time.clock()
 
@@ -324,11 +336,14 @@ class OcgDataset(object):
             if len(npd.shape) <= 2:
                 npd = npd.reshape(len(self._idxtime),len(self._idxrow),len(self._idxcol))
         elif dimShape == 4:
+            if len(levels)==0:
+                print "Invalid Selection, unable to select levels"
+                return
             self.levels = self.dataset.variables[self.level_name][:]
             npd = self.dataset.variables[var_name][self._idxtime,levels,self._idxrow,self._idxcol]
             if len(npd.shape)<=3:
                 npd = npd.reshape(len(self._idxtime),len(levels),len(self._idxrow),len(self._idxcol))
-            #print npd.shape
+
             #print self._weights
         if self.multiReset:
             self.dataset.close()
@@ -382,6 +397,10 @@ class OcgDataset(object):
         q=args[0]
         var = args[1]
         npd = self._get_numpy_data_(*args[1:],**kwds)
+
+        #cancel if there is no data
+        if npd is None:
+            return
         ##check which flavor of climate data we are dealing with
         ocgShape = len(npd.shape)
         ## will hold feature dictionaries
@@ -523,7 +542,7 @@ class OcgDataset(object):
                                 recombine[ctr].append(feature)
                             else:
                                 features.append(feature)
-
+                            
 
                     elif ocgShape == 4:
 
@@ -597,9 +616,12 @@ def multipolygon_multicore_operation(dataset,var,polygons,time_range=None,clip=N
     #create a polygon covering the whole area so that the job can be split
     if polygons == [None]:
         polygons = [Polygon(((ncp.col_bnds.min(),ncp.row_bnds.min()),(ncp.col_bnds.max(),ncp.row_bnds.min()),(ncp.col_bnds.max(),ncp.row_bnds.max()),(ncp.col_bnds.min(),ncp.row_bnds.max())))]
-
     for ii,polygon in enumerate(polygons):
         print(ii)
+
+        if not polygon.is_valid:
+            print "Polygon "+repr(ii+1)+" is not valid. "+polygon.wkt
+            continue
 
         #if polygons have been specified and subdivide is True, each polygon will be subdivided
         #into a grid with resolution of subres. If subres is undefined the resolution is half the square root of the area of the polygons envelope, or approximately 4 subpolygons
@@ -633,7 +655,7 @@ def multipolygon_multicore_operation(dataset,var,polygons,time_range=None,clip=N
                 p.start()
                 pl.append(p)
 
-        #if no polygons are specified only 1 thread will be created
+        #if no polygons are specified only 1 thread will be created per polygon
         else:
             p = Process(target = ncp.extract_elements,
                             args =       (
@@ -646,7 +668,7 @@ def multipolygon_multicore_operation(dataset,var,polygons,time_range=None,clip=N
                                             'clip':clip,
                                             'dissolve':dissolve,
                                             'levels' : levels,
-                                            'parentPoly':1})
+                                            'parentPoly':ii})
             p.start()
             pl.append(p)
 
@@ -675,7 +697,6 @@ def multipolygon_multicore_operation(dataset,var,polygons,time_range=None,clip=N
 
         #form groups of elements based on which polygon they belong to
         for x in ret:
-
             if not x[0] in groups:
                 groups[x[0]] = []
 
@@ -727,7 +748,7 @@ def multipolygon_multicore_operation(dataset,var,polygons,time_range=None,clip=N
                                         geometry=total,
                                         properties=dict({var:avg,
                                                         'timestamp':subgroup[0]['properties']['timestamp']})))
-    #hande recombining undissolved features
+    #handle recombining undissolved features
     else:
         recombine = []
         #pull out unique elements and potentially repeated elements
