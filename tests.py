@@ -751,7 +751,7 @@ class TestOpenDapNC(unittest.TestCase):
         return elements
 
     def test_RSSlSdRcd(self):
-        "Local file, Single core, Single layer, Single date, Single Rectangle, Clip=False, Dissolve=False"
+        "Remote file, Single core, Single layer, Single date, Single Rectangle, Clip=False, Dissolve=False"
         #pick one point in the upper left
         poly = Polygon(((-120.125, 35.875), (-120.0, 35.875), (-120.0, 36.0), (-120.125, 36.0), (-120.125, 35.875)))
         #      POLYGON ((-124.75  25.125,   -67.0   25.125, -67.0  52.875,  -124.75  52.875,   -124.75  25.125))
@@ -772,7 +772,7 @@ class TestOpenDapNC(unittest.TestCase):
         self.assertTrue((-120.0625,35.9375) in c and (-119.9375,35.9375) in c and (-120.0625,36.0625) in c and (-119.9375,36.0625) in c)
 
     def test_RMSlSdRcd(self):
-        "Local file, Single core, Single layer, Single date, Single Rectangle, Clip=False, Dissolve=False"
+        "Remote file, Multiple core, Single layer, Single date, Single Rectangle, Clip=False, Dissolve=False"
         #pick one point in the upper left
         poly = None
         time = [datetime.datetime(1960,3,16),datetime.datetime(1960,4,16)]
