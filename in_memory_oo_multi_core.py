@@ -509,7 +509,7 @@ class OcgDataset(object):
                                     weight=1.0,
                                     properties=dict({var:list(npd[kk,x,ii,jj] for x in xrange(len(levels))),
                                                     'timestamp':self.timevec[self._idxtime[kk]],
-                                                    'levels':list(x for x in self.levels[levels])}))
+                                                    'level':list(x for x in self.levels[levels])}))
                             recombine[ctr].append(feature)
                             
         else:
@@ -559,7 +559,7 @@ class OcgDataset(object):
                                 geometry=self._igrid[ii,jj],
                                 properties=dict({var:list(float(data[kk][x]) for x in xrange(len(levels))),
                                                 'timestamp':self.timevec[self._idxtime[kk]],
-                                                'levels':list(x for x in self.levels[levels])}))
+                                                'level':list(x for x in self.levels[levels])}))
                             #q.put(feature)
                             if self._weights[ii,jj] < 1 or (self._pgrid[ii,jj] and not clip):
                                 recombine[ctr].append(feature)
@@ -596,6 +596,140 @@ def as_shp(elements,path=None):
     ocs = OpenClimateShp(path,elements)
     ocs.write()
     return(path)
+
+def as_tabular(elements,var,wkt=False,wkb=False,path = None):
+    import osgeo.ogr as ogr
+
+    if path is None:
+        path = get_temp_path(suffix='.txt')
+
+    sr = ogr.osr.SpatialReference()
+    sr.ImportFromEPSG(4326)
+    sr2 = ogr.osr.SpatialReference()
+    sr2.ImportFromEPSG(3005)
+
+    with open(path,'w') as f:
+
+        for ii,element in enumerate(elements):
+
+            #convert area from degrees to m^2
+            geo = ogr.CreateGeometryFromWkb(element['geometry'].wkb)
+            geo.AssignSpatialReference(sr)
+            geo.TransformTo(sr2)
+            area = geo.GetArea()
+
+            #write id, timestamp, variable
+            f.write(','.join([repr(ii+1),element['properties']['timestamp'].strftime("%Y-%m-%d %H:%M:%S"),repr(element['properties'][var])]))
+
+            #write level if the dataset has levels
+            if 'level' in element['properties'].keys():
+                f.write(','+repr(element['properties']['level']))
+
+            #write the area
+            f.write(','+repr(area))
+
+            #write wkb if requested
+            if wkb:
+                f.write(','+repr(element['geometry'].wkb))
+
+            #write wkt if requested
+            if wkt:
+                f.write(','+repr(element['geometry'].wkt))
+
+            f.write('\n')
+        f.close()
+
+    return path
+
+def as_keyTabular(elements,var,wkt=False,wkb=False,path = None):
+    import osgeo.ogr as ogr
+
+    if path is None:
+        path = get_temp_path(suffix='')
+
+    if len(path)>4 and path[-4] == '.':
+        path = path[:-4]
+
+    patht = path+"_time.txt"
+    pathg = path+"_geometry.txt"
+    pathd = path+"_data.txt"
+
+    sr = ogr.osr.SpatialReference()
+    sr.ImportFromEPSG(4326)
+    sr2 = ogr.osr.SpatialReference()
+    sr2.ImportFromEPSG(3005)
+    data = {}
+
+    for ii,element in enumerate(elements):
+        element['id']=ii
+        time = element['properties']['timestamp'].strftime("%Y-%m-%d %H:%M:%S")
+        ewkt = element['geometry'].wkt
+
+        if not (time in data):
+            data[time] = {}
+
+        if not (ewkt in data[time]):
+            data[time][ewkt] = [element]
+        else:
+            data[time][ewkt].append(element)
+
+    locs = []
+
+    for key in data:
+        locs.extend(data[key].keys())
+
+    locs = set(locs)
+
+    ft = open(patht,'w')
+    fg = open(pathg,'w')
+    fd = open(pathd,'w')
+
+    for ii,time in enumerate(data.keys()):
+
+        tdat = data[time]
+        ft.write(repr(ii+1)+','+time+'\n')
+
+        for jj,loc in enumerate(locs):
+            if ii==0:
+                geo = ogr.CreateGeometryFromWkt(loc)
+                geo.AssignSpatialReference(sr)
+                geo.TransformTo(sr2)
+
+                fg.write(repr(jj+1))
+                fg.write(','+repr(geo.GetArea()))
+
+                if wkt:
+                    fg.write(','+loc)
+                if wkb:
+                    fg.write(','+repr(ogr.CreateGeometryFromWkt(loc).ExportToWkb()))
+                fg.write('\n')
+
+            if loc in tdat:
+                for element in tdat[loc]:
+                    fd.write(','.join([repr(element['id']),repr(ii+1),repr(jj+1),repr(element['properties'][var])]))
+                    if 'level' in element['properties']:
+                        fd.write(','+repr(element['properties']['level']))
+                    fd.write('\n')
+
+    ft.close()
+    fg.close()
+    fd.close()
+
+            
+
+#['AddGeometry', 'AddGeometryDirectly', 'AddPoint', 'AddPoint_2D', 'AssignSpatialReference', 'Buffer', 
+#'Centroid', 'Clone', 'CloseRings', 'Contains', 'ConvexHull', 'Crosses', 'Destroy', 'Difference', 
+#'Disjoint', 'Distance', 'Empty', 'Equal', 'ExportToGML', 'ExportToJson', 'ExportToKML', 'ExportToWkb', 
+#'ExportToWkt', 'FlattenTo2D', 'GetArea', 'GetBoundary', 'GetCoordinateDimension', 'GetDimension', 
+#'GetEnvelope', 'GetGeometryCount', 'GetGeometryName', 'GetGeometryRef', 'GetGeometryType', 'GetPoint', 
+#'GetPointCount', 'GetPoint_2D', 'GetSpatialReference', 'GetX', 'GetY', 'GetZ', 'Intersect', 'Intersection', 
+#'IsEmpty', 'IsRing', 'IsSimple', 'IsValid', 'Overlaps', 'Segmentize', 'SetCoordinateDimension', 'SetPoint', 
+#'SetPoint_2D', 'SymmetricDifference', 'Touches', 'Transform', 'TransformTo', 'Union', 'Within', 'WkbSize', 
+#'__class__', '__del__', '__delattr__', '__dict__', '__doc__', '__format__', '__getattr__', '__getattribute__', 
+#'__hash__', '__init__', '__iter__', '__module__', '__new__', '__reduce__', '__reduce_ex__', '__repr__', 
+#'__setattr__', '__setstate__', '__sizeof__', '__str__', '__subclasshook__', '__swig_destroy__', 
+#'__swig_getmethods__', '__swig_setmethods__', '__weakref__', 'next', 'this']
+
 
 def multipolygon_multicore_operation(dataset,var,polygons,time_range=None,clip=None,dissolve=None,levels = None,ocgOpts=None,subdivide=False,subres='detect'):
 
@@ -737,7 +871,7 @@ def multipolygon_multicore_operation(dataset,var,polygons,time_range=None,clip=N
                                         geometry=total,
                                         properties=dict({VAR: avg,
                                                         'timestamp':subgroup[0]['properties']['timestamp'],
-                                                        'levels': subgroup[0]['properties']['levels']})))
+                                                        'level': subgroup[0]['properties']['levels']})))
                     #print total.area
                     #print avg
                 else:
@@ -797,7 +931,7 @@ def multipolygon_multicore_operation(dataset,var,polygons,time_range=None,clip=N
                 e = x.copy()
                 e['properties'] = x['properties'].copy()
                 e['properties'][var] = e['properties'][var][i]
-                e['properties']['levels'] = e['properties']['levels'][i]
+                e['properties']['level'] = e['properties']['level'][i]
                 elements2.append(e)
     else:
         elements2 = elements
@@ -873,11 +1007,11 @@ if __name__ == '__main__':
     ## great lakes
     #POLYINT = Polygon(((-90.35,40.55),(-83,43),(-80.80,49.87),(-90.35,49.87)))
     #POLYINT = Polygon(((-90,30),(-70,30),(-70,50),(-90,50)))
-    #POLYINT = Polygon(((-90,40),(-80,40),(-80,50),(-90,50)))
+    POLYINT = Polygon(((-90,40),(-80,40),(-80,50),(-90,50)))
     #POLYINT = Polygon(((-130,18),(-60,18),(-60,98),(-130,98)))
     #POLYINT = Polygon(((0,0),(0,10),(10,10),(10,0)))
     ## return all data
-    POLYINT = None
+    #POLYINT = None
     ## two areas
     #POLYINT = [wkt.loads('POLYGON ((-85.324076923076916 44.028020242914977,-84.280765182186229 44.16008502024291,-84.003429149797569 43.301663967611333,-83.607234817813762 42.91867611336032,-84.227939271255053 42.060255060728736,-84.941089068825903 41.307485829959511,-85.931574898785414 41.624441295546553,-85.588206477732783 43.011121457489871,-85.324076923076916 44.028020242914977))'),
               #wkt.loads('POLYGON ((-89.24640080971659 46.061817813765174,-88.942651821862341 46.378773279352224,-88.454012145748976 46.431599190283393,-87.952165991902831 46.11464372469635,-88.163469635627521 45.190190283400803,-88.889825910931165 44.503453441295541,-88.770967611336033 43.552587044534405,-88.942651821862341 42.786611336032379,-89.774659919028338 42.760198380566798,-90.038789473684204 43.777097165991897,-89.735040485829956 45.097744939271251,-89.24640080971659 46.061817813765174))')]
@@ -905,27 +1039,28 @@ if __name__ == '__main__':
 #        for polygon in geom:
 #            POLYINT.append(polygon)
     
-    NC = '/home/reid/Desktop/ncconv/pcmdi.ipcc4.bccr_bcm2_0.1pctto2x.run1.monthly.cl_A1_1.nc'
+    #NC = '/home/reid/Desktop/ncconv/pcmdi.ipcc4.bccr_bcm2_0.1pctto2x.run1.monthly.cl_A1_1.nc'
     #NC = '/home/bkoziol/git/OpenClimateGIS/bin/climate_data/maurer/bccr_bcm2_0.1.sresa1b.monthly.Prcp.1950.nc'
-    #NC = '/home/reid/Desktop/ncconv/bccr_bcm2_0.1.sresa1b.monthly.Prcp.1950.nc'
+    NC = '/home/reid/Desktop/ncconv/bccr_bcm2_0.1.sresa1b.monthly.Prcp.1950.nc'
     #NC = 'http://hydra.fsl.noaa.gov/thredds/dodsC/oc_gis_downscaling.bccr_bcm2.sresa1b.Prcp.Prcp.1.aggregation.1'
 
 #    TEMPORAL = [datetime.datetime(1950,2,1),datetime.datetime(1950,4,30)]
-    #TEMPORAL = [datetime.datetime(1950,2,1),datetime.datetime(1950,3,1)]
-    TEMPORAL = [datetime.datetime(1960,3,16),datetime.datetime(1961,3,16)] #time range for multi-level file
+    TEMPORAL = [datetime.datetime(1950,2,1),datetime.datetime(1950,5,1)]
+    #TEMPORAL = [datetime.datetime(1960,3,16),datetime.datetime(1961,3,16)] #time range for multi-level file
     DISSOLVE = False
     CLIP = True
-    VAR = 'cl'
-    #VAR = 'Prcp'
+    #VAR = 'cl'
+    VAR = 'Prcp'
     #kwds={}
     kwds = {
-        'rowbnds_name': 'lat_bnds', 
-        'colbnds_name': 'lon_bnds',
-        'time_units': 'days since 1800-1-1 00:00:0.0',
-        #'time_units': 'days since 1950-1-1 0:0:0.0',
-        'level_name': 'lev'
+        #'rowbnds_name': 'lat_bnds', 
+        #'colbnds_name': 'lon_bnds',
+        #'time_units': 'days since 1800-1-1 00:00:0.0',
+        'time_units': 'days since 1950-1-1 0:0:0.0',
+        #'level_name': 'lev'
     }
-    LEVELS = [x for x in range(0,1)]
+    LEVELS = None
+    #LEVELS = [x for x in range(0,1)]
     #LEVELS = [x for x in range(0,10)]
     ## open the dataset for reading
     dataset = NC#nc.Dataset(NC,'r')
@@ -941,13 +1076,16 @@ if __name__ == '__main__':
                                       levels = LEVELS,
                                       ocgOpts=kwds,
                                       subdivide=True,
-                                      subres = 90
+                                      #subres = 90
                                       )
+
+
 #    out = as_shp(elements)
     dtime = time.time()
-    out = as_geojson(elements)
-    with open('./out_M3.json','w') as f:
-        f.write(out)
+    #out = as_geojson(elements)
+    #with open('./out_M3.json','w') as f:
+        #f.write(out)
+    as_keyTabular(elements,VAR,path='./out_tabular.txt',wkt=True)
     dtime = time.time()-dtime
 
     blarg = time.time()
