@@ -81,6 +81,167 @@ class TestSimpleNc(unittest.TestCase):
         return elements
 
 
+#-------------------------------------output-----------------------------
+
+    def test_tabular(self):
+        "Tabular output format"
+
+        layer = self.singleLayer
+        poly = Polygon(((0,0),(20,0),(20,20),(0,20)))
+        time = [datetime.datetime(2000,1,1),datetime.datetime(2000,1,1)]
+        levels = None
+        subdivide = False
+        subres = 'detect'
+        elements = self._access(layer,poly,time,False,False,levels,subdivide,subres)
+        
+        ncconv.as_tabular(elements,'Prcp',path='./test_tabular.txt')
+        tf = open('./test_tabular.txt','r')
+
+        lines = [line for line in tf]
+        self.assertEqual(lines[0].replace('\n',''),"1,2000-01-01 00:00:00,1.6243454217910767,1220762936068.626")
+        self.assertEqual(lines[1].replace('\n',''),"2,2000-01-01 00:00:00,0.61175638437271118,1220762936068.6296")
+        self.assertEqual(lines[2].replace('\n',''),"3,2000-01-01 00:00:00,0.86540764570236206,1184603064536.2717")
+        self.assertEqual(lines[3].replace('\n',''),"4,2000-01-01 00:00:00,2.3015387058258057,1184603064536.2744")
+
+        tf.close()
+        
+        poly = Polygon(((0,0),(10,0),(10,10),(0,10)))
+        elements = self._access(layer,poly,time,False,False,levels,subdivide,subres)
+
+        ncconv.as_tabular(elements,'Prcp',wkt=True,path='./test_tabular.txt')
+        tf = open('./test_tabular.txt','r')
+
+        lines = [line for line in tf]
+        self.assertEqual(lines[0].replace('\n',''),"1,2000-01-01 00:00:00,1.6243454217910767,1220762936068.626,'POLYGON ((0.0000000000000000 0.0000000000000000, 0.0000000000000000 10.0000000000000000, 10.0000000000000000 10.0000000000000000, 10.0000000000000000 0.0000000000000000, 0.0000000000000000 0.0000000000000000))'")
+
+        tf.close()
+        layer = self.multiLayer
+        levels = [1]
+
+        poly = Polygon(((0,0),(20,0),(20,20),(0,20)))
+        elements = self._access(layer,poly,time,False,False,levels,subdivide,subres)
+        
+        ncconv.as_tabular(elements,'Prcp',path='./test_tabular.txt')
+        tf = open('./test_tabular.txt','r')
+
+        lines = [line for line in tf]
+        self.assertEqual(lines[0].replace('\n',''),"1,2000-01-01 00:00:00,0.17242820560932159,2,1220762936068.626")
+        self.assertEqual(lines[1].replace('\n',''),"2,2000-01-01 00:00:00,0.87785840034484863,2,1220762936068.6296")
+        self.assertEqual(lines[2].replace('\n',''),"3,2000-01-01 00:00:00,1.1006191968917847,2,1184603064536.2717")
+        self.assertEqual(lines[3].replace('\n',''),"4,2000-01-01 00:00:00,1.144723653793335,2,1184603064536.2744")
+        
+
+    def test_keyTabular(self):
+        "Tabular output format with foreign keys for time and geometry"
+        
+
+        layer = self.multiLayer
+        poly = Polygon(((0,0),(10,0),(10,10),(0,10)))
+        time = [datetime.datetime(2000,1,1),datetime.datetime(2000,1,1)]
+        levels = [0]
+        subdivide = False
+        subres = 'detect'
+        elements = self._access(layer,poly,time,False,False,levels,subdivide,subres)
+
+        ncconv.as_keyTabular(elements,'Prcp',path='./test_keyTabular.txt')
+        tft = open('./test_keyTabular_time.txt','r')
+        tfg = open('./test_keyTabular_geometry.txt','r')
+        tfd = open('./test_keyTabular_data.txt','r')
+
+        lines = [line for line in tft]
+
+        self.assertEqual(lines[0].replace('\n',''),'1,2000-01-01 00:00:00')
+
+        lines = [line for line in tfg]
+
+        self.assertEqual(lines[0].replace('\n',''),'1,1220762936068.626')
+
+        lines = [line for line in tfd]
+
+        self.assertEqual(lines[0].replace('\n',''),'0,1,1,1.6243454217910767,1')
+
+        tft.close()
+        tfg.close()
+        tfd.close()
+
+        ncconv.as_keyTabular(elements,'Prcp',wkt=True,path='./test_keyTabular.txt')
+        tft = open('./test_keyTabular_time.txt','r')
+        tfg = open('./test_keyTabular_geometry.txt','r')
+        tfd = open('./test_keyTabular_data.txt','r')
+
+        lines = [line for line in tft]
+
+        self.assertEqual(lines[0].replace('\n',''),'1,2000-01-01 00:00:00')
+
+        lines = [line for line in tfg]
+
+        self.assertEqual(lines[0].replace('\n',''),"1,1220762936068.626,POLYGON ((0.0000000000000000 0.0000000000000000, 0.0000000000000000 10.0000000000000000, 10.0000000000000000 10.0000000000000000, 10.0000000000000000 0.0000000000000000, 0.0000000000000000 0.0000000000000000))")
+
+        lines = [line for line in tfd]
+
+        self.assertEqual(lines[0].replace('\n',''),'0,1,1,1.6243454217910767,1')
+
+        tft.close()
+        tfg.close()
+        tfd.close()
+
+
+        time = [datetime.datetime(2000,1,1),datetime.datetime(2000,1,2)]
+        elements = self._access(layer,poly,time,False,False,levels,subdivide,subres)
+
+        ncconv.as_keyTabular(elements,'Prcp',path='./test_keyTabular.txt')
+        tft = open('./test_keyTabular_time.txt','r')
+        tfg = open('./test_keyTabular_geometry.txt','r')
+        tfd = open('./test_keyTabular_data.txt','r')
+
+        lines = [line for line in tft]
+
+        self.assertEqual(lines[1].replace('\n',''),'2,2000-01-01 00:00:00')
+        self.assertEqual(lines[0].replace('\n',''),'1,2000-01-02 00:00:00')
+
+        lines = [line for line in tfg]
+
+        self.assertEqual(lines[0].replace('\n',''),'1,1220762936068.626')
+
+        lines = [line for line in tfd]
+
+        self.assertEqual(lines[0].replace('\n',''),'1,1,1,0.48851814866065979,1')
+        self.assertEqual(lines[1].replace('\n',''),'0,2,1,1.6243454217910767,1')
+
+        tft.close()
+        tfg.close()
+        tfd.close()
+
+
+        poly = Polygon(((0,0),(20,0),(20,10),(0,10)))   
+        time = [datetime.datetime(2000,1,1),datetime.datetime(2000,1,1)]
+        elements = self._access(layer,poly,time,False,False,levels,subdivide,subres)
+
+        ncconv.as_keyTabular(elements,'Prcp',path='./test_keyTabular.txt')
+        tft = open('./test_keyTabular_time.txt','r')
+        tfg = open('./test_keyTabular_geometry.txt','r')
+        tfd = open('./test_keyTabular_data.txt','r')
+
+        lines = [line for line in tft]
+
+        self.assertEqual(lines[0].replace('\n',''),'1,2000-01-01 00:00:00')
+
+        lines = [line for line in tfg]
+
+        self.assertEqual(lines[0].replace('\n',''),'1,1220762936068.626')
+        self.assertEqual(lines[1].replace('\n',''),'2,1220762936068.6296')
+
+        lines = [line for line in tfd]
+
+        self.assertEqual(lines[0].replace('\n',''),'0,1,1,1.6243454217910767,1')
+        self.assertEqual(lines[1].replace('\n',''),'1,1,2,0.61175638437271118,1')
+
+        tft.close()
+        tfg.close()
+        tfd.close()
+
+
+
 #----------------------------------time, layers-----------------------------
 
     def test_LSSlMdRcd(self):
