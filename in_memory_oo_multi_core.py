@@ -263,7 +263,7 @@ class OcgDataset(object):
         return(ret)
         
         
-    def _get_numpy_data_(self,var_name,polygon=None,time_range=None,clip=False,levels = [0],lock=None):
+    def _get_numpy_data_(self,var_name,polygon=None,time_range=None,clip=False,levels = [0],lock=Lock()):
         """
         var_name -- NC variable to extract from
         polygon=None -- shapely polygon object
@@ -363,6 +363,14 @@ class OcgDataset(object):
             return None
         else:
             return arg
+
+    def _is_masked2_(self,arg):
+        "Ensures proper formating of masked data."
+        #print arg
+        if isinstance(arg[0],np.ma.MaskedArray):
+            return None
+        else:
+            return np.array(arg)
     
     def extract_elements(self,*args,**kwds):
         """
@@ -397,6 +405,12 @@ class OcgDataset(object):
         q=args[0]
         var = args[1]
         npd = self._get_numpy_data_(*args[1:],**kwds)
+
+
+        #if hasattr(npd,'mask'):
+            #print self.url," has a mask layer"
+        #else:
+            #print self.url," does not have a mask layer"
 
         #cancel if there is no data
         if npd is None:
@@ -528,7 +542,12 @@ class OcgDataset(object):
                     ## extract the data and convert any mask values
                     #print ocgShape
                     if ocgShape == 3:
+                        #if hasattr(npd,'mask'):
+                            #print np.invert(npd.mask)
+                        #else:
+                            #print 'no mask found'
                         data = [self._is_masked_(da) for da in npd[:,ii,jj]]
+                        #print data
                         for kk in range(len(data)):
                             ## do not add the feature if the value is a NoneType
                             if data[kk] == None: continue
@@ -545,12 +564,16 @@ class OcgDataset(object):
                             
 
                     elif ocgShape == 4:
-
+                        #if hasattr(npd,'mask'):
+                            #print np.invert(npd.mask)
+                        #else:
+                            #print 'no mask found'
                         if self._weights[ii,jj] < 1 or not clip:
                             ctr = self._jgrid[ii,jj]
                             recombine[ctr] = []
 
-                        data = [self._is_masked_(da) for da in npd[:,:,ii,jj]]
+                        data = [self._is_masked2_(da) for da in npd[:,:,ii,jj]]
+                        #print data
                         for kk in range(len(data)):
                             ## do not add the feature if the value is a NoneType
                             if data[kk] == None: continue
@@ -1007,11 +1030,11 @@ if __name__ == '__main__':
     ## great lakes
     #POLYINT = Polygon(((-90.35,40.55),(-83,43),(-80.80,49.87),(-90.35,49.87)))
     #POLYINT = Polygon(((-90,30),(-70,30),(-70,50),(-90,50)))
-    POLYINT = Polygon(((-90,40),(-80,40),(-80,50),(-90,50)))
+    #POLYINT = Polygon(((-90,40),(-80,40),(-80,50),(-90,50)))
     #POLYINT = Polygon(((-130,18),(-60,18),(-60,98),(-130,98)))
     #POLYINT = Polygon(((0,0),(0,10),(10,10),(10,0)))
     ## return all data
-    #POLYINT = None
+    POLYINT = None
     ## two areas
     #POLYINT = [wkt.loads('POLYGON ((-85.324076923076916 44.028020242914977,-84.280765182186229 44.16008502024291,-84.003429149797569 43.301663967611333,-83.607234817813762 42.91867611336032,-84.227939271255053 42.060255060728736,-84.941089068825903 41.307485829959511,-85.931574898785414 41.624441295546553,-85.588206477732783 43.011121457489871,-85.324076923076916 44.028020242914977))'),
               #wkt.loads('POLYGON ((-89.24640080971659 46.061817813765174,-88.942651821862341 46.378773279352224,-88.454012145748976 46.431599190283393,-87.952165991902831 46.11464372469635,-88.163469635627521 45.190190283400803,-88.889825910931165 44.503453441295541,-88.770967611336033 43.552587044534405,-88.942651821862341 42.786611336032379,-89.774659919028338 42.760198380566798,-90.038789473684204 43.777097165991897,-89.735040485829956 45.097744939271251,-89.24640080971659 46.061817813765174))')]
@@ -1041,14 +1064,15 @@ if __name__ == '__main__':
     
     #NC = '/home/reid/Desktop/ncconv/pcmdi.ipcc4.bccr_bcm2_0.1pctto2x.run1.monthly.cl_A1_1.nc'
     #NC = '/home/bkoziol/git/OpenClimateGIS/bin/climate_data/maurer/bccr_bcm2_0.1.sresa1b.monthly.Prcp.1950.nc'
-    NC = '/home/reid/Desktop/ncconv/bccr_bcm2_0.1.sresa1b.monthly.Prcp.1950.nc'
+    #NC = '/home/reid/Desktop/ncconv/bccr_bcm2_0.1.sresa1b.monthly.Prcp.1950.nc'
     #NC = 'http://hydra.fsl.noaa.gov/thredds/dodsC/oc_gis_downscaling.bccr_bcm2.sresa1b.Prcp.Prcp.1.aggregation.1'
+    NC = 'test.nc'
 
 #    TEMPORAL = [datetime.datetime(1950,2,1),datetime.datetime(1950,4,30)]
     TEMPORAL = [datetime.datetime(1950,2,1),datetime.datetime(1950,5,1)]
     #TEMPORAL = [datetime.datetime(1960,3,16),datetime.datetime(1961,3,16)] #time range for multi-level file
     DISSOLVE = False
-    CLIP = True
+    CLIP = False
     #VAR = 'cl'
     VAR = 'Prcp'
     #kwds={}

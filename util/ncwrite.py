@@ -232,8 +232,108 @@ class NcWrite(object):
             blons[:,:] = self._dsp['col_bnds']
         
         return(rootgrp)
+
+def NcSubset(path,ocg,Var,poly,time_range,Levels=None,lat_name='latitude',lon_name='longitude'):
+    'subset a netCDF4 file'
+
+    npd = ocg._get_numpy_data_(Var,polygon=poly,time_range=time_range,levels=Levels)
+
+    rootgrp = Dataset(path,'w',format='NETCDF4')
+    
+    rootgrp.createDimension('time',len(ocg._idxtime))
+    rootgrp.createDimension('lon',len(ocg._idxcol))
+    rootgrp.createDimension('lat',len(ocg._idxrow))
+
+    times = rootgrp.createVariable(ocg.time_name,'f8',('time',))
+    latitudes = rootgrp.createVariable('latitude','f4',('lat',))
+    longitudes = rootgrp.createVariable('longitude','f4',('lon',))
+
+    bdim = ['time','lat','lon']
+    if not(Levels==None):
+        bdim.insert(1,'lvl')
+        rootgrp.createDimension('lvl',len(Levels))
+        levels = rootgrp.createVariable(ocg.level_name,'u1',('lvl',))
+        #print '>>',ocg.levels[np.array(Levels)]
+        levels[:] = list(x for x in ocg.levels[np.array(Levels)])
+    var = rootgrp.createVariable(Var,'f4',bdim)
+
+    times.units = ocg.time_units
+    times.calendar = ocg.calendar
+    var.units = ocg.dataset.variables[Var].units
+
+    #print ocg.dataset.variables.keys()
+    latitudes[:] = ocg.dataset.variables[lat_name][ocg._idxrow]
+    longitudes[:] = ocg.dataset.variables[lon_name][ocg._idxcol]
+    times[:] = ocg.dataset.variables[ocg.time_name][ocg._idxtime]
+
+    if hasattr(npd,'mask'):
+        npdma = np.ma.array(npd,mask=np.invert(ocg._mask*np.invert(npd.mask)))
+    else:
+        mask=np.invert(ocg._mask)
+        if not(Levels==None):
+            mask = np.zeros((len(ocg._idxtime),len(levels),len(ocg._idxrow),len(ocg._idxcol)),dtype=bool)
+        else:
+            mask = np.zeros((len(ocg._idxtime),len(ocg._idxrow),len(ocg._idxcol)),dtype=bool)
+
+        mask = np.invert(ocg._mask*np.invert(mask))
+        #print mask
+
+        npdma = np.ma.masked_array(npd,mask=mask)
+
+    #print ">>>>>>>>",hasattr(npdma,'mask')
+    #print npdma.mask
+
+    if not(Levels==None):
+        var[:,:,:,:] = npdma
+    else:
+        var[:,:,:] = npdma
+
+    #print ">>>>>>>>",hasattr(var,'mask')
+    #print npdma.mask
+
+    #print ocg.min_row.shape
+    #print ocg._idxrow
+    #print ocg._idxcol
+    #print ocg._idxrow.shape
+    #print ocg._idxcol.shape
+    #print
+    mr  = ocg.min_row[ocg._idxrow,:][:,ocg._idxcol]
+    mxr = ocg.max_row[ocg._idxrow,:][:,ocg._idxcol]
+    mc  = ocg.min_col[ocg._idxrow,:][:,ocg._idxcol]
+    mxc = ocg.max_col[ocg._idxrow,:][:,ocg._idxcol]
+
+    #print ocg.min_row
+    #print ocg.min_col
+    #print
+    #print mr
+    #print mxr
+
+    #print mc
+    #print mc.shape
+    #print mxc
+
+    #mr  = ocg.min_row[ocg._idxrow,ocg._idxcol]
+    #mxr = ocg.max_row[ocg._idxrow,ocg._idxcol]
+    #mc  = ocg.min_col[ocg._idxrow,ocg._idxcol]
+    #mxc = ocg.max_col[ocg._idxrow,ocg._idxcol]
+
+    #print mr
+    #print mxr
+
+    #print mc
+    #print mxc
+    #print ocg.row_bnds
+    #print ocg.col_bnds
+
+    rootgrp.createDimension('bound',2)
+    blats = rootgrp.createVariable(ocg.rowbnds_name,'f4',('lat','bound'))
+    blons = rootgrp.createVariable(ocg.colbnds_name,'f4',('lon','bound'))
+    #print [ [mr[x,0],mxr[x,0]] for x in xrange(mr.shape[0])]
+    #print [ [mc[0,x],mxc[0,x]] for x in xrange(mc.shape[1])]
+    blats[:,:] = [ [mr[x,0],mxr[x,0]] for x in xrange(mr.shape[0])]
+    blons[:,:] = [ [mc[0,x],mxc[0,x]] for x in xrange(mc.shape[1])]
         
-        
+
 if __name__ == '__main__':
     import doctest
     doctest.testmod()

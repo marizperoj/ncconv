@@ -1,8 +1,9 @@
 import unittest
 from shapely.geometry.polygon import Polygon
-from util.ncwrite import NcSpatial, NcTime, NcVariable, NcWrite
+from util.ncwrite import NcSpatial, NcTime, NcVariable, NcWrite, NcSubset
 import datetime
 import os
+import numpy as np
 from netCDF4 import Dataset
 import in_memory_oo_multi_core as ncconv
 
@@ -79,6 +80,138 @@ class TestSimpleNc(unittest.TestCase):
                                         )
 
         return elements
+
+    def testSingleLayerSubset(self):
+        'Subset a netCDF4 file with a single layer of data'
+
+        kwds = {
+            'time_units': 'days since 1950-1-1 0:0:0.0',
+        }
+        dataset = "../bccr_bcm2_0.1.sresa1b.monthly.Prcp.1950.nc"
+        ocg = ncconv.OcgDataset(dataset,**kwds)
+
+        #polygon = Polygon(((-90,40),(-80,40),(-80,50),(-90,50)))
+        polygon = Polygon(((-90,40),(-80,40),(-80,42),(-90,50)))
+        time_range = [datetime.datetime(1950,2,1),datetime.datetime(1950,5,1)]
+        NcSubset("test.nc",ocg,"Prcp",polygon,time_range)
+
+
+        elements = ncconv.multipolygon_multicore_operation(dataset,
+                                        'Prcp',
+                                        [polygon],
+                                        time_range=time_range,
+                                        clip=False,
+                                        dissolve=False,
+                                        levels = None,
+                                        ocgOpts=kwds,
+                                        subdivide=True,
+                                        )
+
+        elements2 = ncconv.multipolygon_multicore_operation('test.nc',
+                                        'Prcp',
+                                        [None],
+                                        time_range=time_range,
+                                        clip=False,
+                                        dissolve=False,
+                                        levels = None,
+                                        ocgOpts=kwds,
+                                        subdivide=True,
+                                        )
+
+        self.assertEqual(len(elements),len(elements2))
+
+        l1 = [list(x['geometry'].exterior.coords) for x in elements]
+
+        l2 = [list(x['geometry'].exterior.coords) for x in elements2]
+
+        l1.sort()
+        l2.sort()
+        np.testing.assert_array_almost_equal(l1,l2)
+
+        l1 = [x['properties']['Prcp'] for x in elements]
+
+        l2 = [x['properties']['Prcp'] for x in elements2]
+
+        l1.sort()
+        l2.sort()
+        self.assertEqual(l1,l2)
+
+        l1 = [x['properties']['timestamp'] for x in elements]
+
+        l2 = [x['properties']['timestamp'] for x in elements2]
+
+        l1.sort()
+        l2.sort()
+        self.assertEqual(l1,l2)
+
+    def testMultiLayerSubset(self):
+        'Subset a netCDF4 file with multiple layers of data'
+
+        kwds = {
+            'rowbnds_name': 'lat_bnds', 
+            'colbnds_name': 'lon_bnds',
+            'time_units': 'days since 1800-1-1 00:00:0.0',
+            'level_name': 'lev'
+        }
+        dataset = '../pcmdi.ipcc4.bccr_bcm2_0.1pctto2x.run1.monthly.cl_A1_1.nc'
+        ocg = ncconv.OcgDataset(dataset,**kwds)
+        levels = [0,1,2,3]
+
+        polygon = Polygon(((0,0),(0,5),(20,20),(20,0)))
+        #time_range = [datetime.datetime(1960,3,16),datetime.datetime(1961,5,16)]
+        time_range = [datetime.datetime(1960,3,16),datetime.datetime(1961,3,16)]
+        NcSubset("test2.nc",ocg,"cl",polygon,time_range,Levels=levels,lat_name='lat',lon_name='lon')
+
+
+        elements = ncconv.multipolygon_multicore_operation(dataset,
+                                        'cl',
+                                        [polygon],
+                                        time_range=time_range,
+                                        clip=False,
+                                        dissolve=False,
+                                        levels = levels,
+                                        ocgOpts=kwds,
+                                        subdivide=False,
+                                        )
+
+        elements2 = ncconv.multipolygon_multicore_operation('test2.nc',
+                                        'cl',
+                                        [None],
+                                        time_range=time_range,
+                                        clip=False,
+                                        dissolve=False,
+                                        levels = levels,
+                                        ocgOpts=kwds,
+                                        subdivide=False,
+                                        )
+
+        self.assertEqual(len(elements),len(elements2))
+
+        l1 = [list(x['geometry'].exterior.coords) for x in elements]
+
+        l2 = [list(x['geometry'].exterior.coords) for x in elements2]
+
+        l1.sort()
+        l2.sort()
+        np.testing.assert_array_almost_equal(l1,l2)
+
+        l1 = [x['properties']['cl'] for x in elements]
+
+        l2 = [x['properties']['cl'] for x in elements2]
+
+        l1.sort()
+        l2.sort()
+        self.assertEqual(l1,l2)
+
+        l1 = [x['properties']['timestamp'] for x in elements]
+
+        l2 = [x['properties']['timestamp'] for x in elements2]
+
+        l1.sort()
+        l2.sort()
+        self.assertEqual(l1,l2)
+
+        
 
 
 #-------------------------------------output-----------------------------
@@ -943,7 +1076,9 @@ class TestOpenDapNC(unittest.TestCase):
         elements = self._access(poly,time,False,False,levels,subdivide,subres)
 
         self.assertEqual(len(elements),76019)
-    
+
+#class testExport(unittest.TestCase):
+
 
     #462 222
 
