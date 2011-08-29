@@ -76,6 +76,7 @@ class OcgDataset(object):
         self.real_col,self.real_row = np.meshgrid(np.arange(0,len(self.col_bnds)),
                                                   np.arange(0,len(self.row_bnds)))
 
+        #data file must be closed and reopened to work properly with multiple threads
         if self.multiReset:
             print 'closed'
             self.dataset.close()
@@ -188,7 +189,7 @@ class OcgDataset(object):
             ## create the polygon
             g = self._make_poly_((self.min_row[ii,jj],self.max_row[ii,jj]),
                                  (self.min_col[ii,jj],self.max_col[ii,jj]))
-            #print g.wkt
+
             ## add the polygon if it intersects the aoi of if all data is being
             ## returned.
             if polygon:
@@ -207,12 +208,14 @@ class OcgDataset(object):
             ## otherwise, just keep the geometry
             else:
                 ng = g
+                #check if the geometry partially intersects the AoI
+                #without this multiple features covering the same location will 
+                #occur when threading is enabled
                 if g.intersection(polygon).area<g.area and g.intersection(polygon).area>0:
-                    #print "NARG"
                     self._pgrid[ii,jj]=True
             ## calculate the weight
             w = ng.area/prearea
-            #print w
+
             ## a polygon can have a true intersects but actually not overlap
             ## i.e. shares a border.
             if w > 0:
@@ -309,6 +312,7 @@ class OcgDataset(object):
         ## hit the dataset and extract the block
         npd = None
 
+        #print an error message and return if the selection doesn't include any data
         if len(self._idxrow)==0:
             print "Invalid Selection, unable to select row"
             return
@@ -321,33 +325,45 @@ class OcgDataset(object):
         
         narg = time.clock()
 
+        #attempt to aquire the file lock
         while not(lock.acquire(False)):
             time.sleep(.1)
 
+        #reopen the data file
         if self.multiReset:
             self.dataset = nc.Dataset(self.url,'r')
 
         ##check if data is 3 or 4 dimensions
         dimShape = len(self.dataset.variables[var_name].dimensions)
 
+        #grab the data
         if dimShape == 3:
             npd = self.dataset.variables[var_name][self._idxtime,self._idxrow,self._idxcol]
-            ## add in an extra dummy dimension in the case of one time layer
+            # reshape the data if the selection causes a loss of dimension(s)
             if len(npd.shape) <= 2:
                 npd = npd.reshape(len(self._idxtime),len(self._idxrow),len(self._idxcol))
         elif dimShape == 4:
+            #check if 1 or more levels have been selected
             if len(levels)==0:
                 print "Invalid Selection, unable to select levels"
                 return
+
+            #grab level values
             self.levels = self.dataset.variables[self.level_name][:]
+
             npd = self.dataset.variables[var_name][self._idxtime,levels,self._idxrow,self._idxcol]
+
+            # reshape the data if the selection causes a loss of dimension(s)
             if len(npd.shape)<=3:
                 npd = npd.reshape(len(self._idxtime),len(levels),len(self._idxrow),len(self._idxcol))
 
             #print self._weights
+
+        #close the dataset
         if self.multiReset:
             self.dataset.close()
     
+        #release the file lock
         lock.release()
 
         print "dtime: ", time.clock()-narg
@@ -358,14 +374,14 @@ class OcgDataset(object):
         return(npd)
     
     def _is_masked_(self,arg):
-        "Ensures proper formating of masked data."
+        "Ensures proper formating of masked data for single-layer data."
         if isinstance(arg,np.ma.MaskedArray):
             return None
         else:
             return arg
 
     def _is_masked2_(self,arg):
-        "Ensures proper formating of masked data."
+        "Ensures proper formating of masked data for multi-layer data."
         #print arg
         if isinstance(arg[0],np.ma.MaskedArray):
             return None
@@ -394,6 +410,7 @@ class OcgDataset(object):
         if 'levels' in kwds:
             levels = kwds.get('levels')
 
+        #get the parent polygon ID so geometry/features can be recombined later
         if 'parentPoly' in kwds:
             parent = kwds.pop('parentPoly')
         else:
@@ -453,13 +470,10 @@ class OcgDataset(object):
 
 
                     #cut out partial values
-                    #print select
                     if not clip:
                         pselect = select*self._pgrid
                         select *= np.invert(self._pgrid)
-                    #print np.invert(self._pgrid)
 
-                    #print self._mask
                     ## select those geometries
                     geoms = self._igrid[select]
                     #print geoms
@@ -482,6 +496,8 @@ class OcgDataset(object):
                         gpass = False
                 ## generate the feature
 
+                #only bother with dissolve if there are one or more features that
+                #fully intersect the AoI
                 if gpass:
                     if ocgShape==3:
                         feature = dict(
@@ -496,12 +512,15 @@ class OcgDataset(object):
                             properties=dict({var:list(weighted[kk,x,:,:].sum() for x in xrange(len(levels))),
                                             'timestamp':self.timevec[self._idxtime[kk]],
                                             'levels':list(x for x in self.levels[levels])}))
-                    #q.put(feature)
+                    
+                    #record the weight used so the geometry can be
+                    #properly recombined later
                     if not(parent == None) and dissolve:
                         feature['weight']=sub_weights.sum()
                     features.append(feature)
-                    #print sub_weights
 
+                #Record pieces that partially cover geometry so duplicates
+                #can later be filtered out the the unique values recombined
                 if not clip:
                     for ii,jj in self._itr_array_(pselect):
                         if self._pgrid[ii,jj]:
@@ -621,15 +640,18 @@ def as_shp(elements,path=None):
     return(path)
 
 def as_tabular(elements,var,wkt=False,wkb=False,path = None):
+    '''writes output in a tabular, CSV format
+geometry output is optional'''
     import osgeo.ogr as ogr
 
     if path is None:
         path = get_temp_path(suffix='.txt')
 
+    #define spatial references for the projection
     sr = ogr.osr.SpatialReference()
     sr.ImportFromEPSG(4326)
     sr2 = ogr.osr.SpatialReference()
-    sr2.ImportFromEPSG(3005)
+    sr2.ImportFromEPSG(3005) #Albers Equal Area is used to ensure legitimate area values
 
     with open(path,'w') as f:
 
@@ -665,6 +687,8 @@ def as_tabular(elements,var,wkt=False,wkb=False,path = None):
     return path
 
 def as_keyTabular(elements,var,wkt=False,wkb=False,path = None):
+    '''writes output as tabular csv files, but uses foreign keys
+on time and geometry to reduce file size'''
     import osgeo.ogr as ogr
 
     if path is None:
@@ -677,25 +701,34 @@ def as_keyTabular(elements,var,wkt=False,wkb=False,path = None):
     pathg = path+"_geometry.txt"
     pathd = path+"_data.txt"
 
+    #define spatial references for the projection
     sr = ogr.osr.SpatialReference()
     sr.ImportFromEPSG(4326)
     sr2 = ogr.osr.SpatialReference()
     sr2.ImportFromEPSG(3005)
     data = {}
 
+    #sort the data into dictionaries so common times and geometries can be identified
     for ii,element in enumerate(elements):
+
+        #record new element ids (otherwise threads will produce copies of ids)
         element['id']=ii
+
+        #get the time and geometry
         time = element['properties']['timestamp'].strftime("%Y-%m-%d %H:%M:%S")
         ewkt = element['geometry'].wkt
 
         if not (time in data):
             data[time] = {}
 
+        #put the data into the dictionary
         if not (ewkt in data[time]):
             data[time][ewkt] = [element]
         else:
             data[time][ewkt].append(element)
 
+
+    #get a unique set of geometry keys
     locs = []
 
     for key in data:
@@ -707,20 +740,26 @@ def as_keyTabular(elements,var,wkt=False,wkb=False,path = None):
     fg = open(pathg,'w')
     fd = open(pathd,'w')
 
+    #write the features to file
     for ii,time in enumerate(data.keys()):
 
+        #write out id's and time values to the time file
         tdat = data[time]
         ft.write(repr(ii+1)+','+time+'\n')
 
         for jj,loc in enumerate(locs):
             if ii==0:
+
+                #find the geometry area
                 geo = ogr.CreateGeometryFromWkt(loc)
                 geo.AssignSpatialReference(sr)
                 geo.TransformTo(sr2)
 
+                #write the id and area
                 fg.write(repr(jj+1))
                 fg.write(','+repr(geo.GetArea()))
 
+                #write out optional geometry
                 if wkt:
                     fg.write(','+loc)
                 if wkb:
@@ -729,7 +768,9 @@ def as_keyTabular(elements,var,wkt=False,wkb=False,path = None):
 
             if loc in tdat:
                 for element in tdat[loc]:
+                    #write out id, foreign keys (time then geometry) and the variable value
                     fd.write(','.join([repr(element['id']),repr(ii+1),repr(jj+1),repr(element['properties'][var])]))
+                    #write out level if appropriate
                     if 'level' in element['properties']:
                         fd.write(','+repr(element['properties']['level']))
                     fd.write('\n')
@@ -761,21 +802,24 @@ def multipolygon_multicore_operation(dataset,var,polygons,time_range=None,clip=N
     q = Queue()
     l = Lock()
     pl = []
+
+    #set the file reset option if the file is local
     if not('http:' in dataset or 'www.' in dataset):
         if ocgOpts == None:
             ocgOpts = {}
         ocgOpts['multiReset'] = True
     ncp = OcgDataset(dataset,**ocgOpts)
 
-    #print ncp.row_bnds.min(),ncp.row_bnds.max()
-    #print ncp.col_bnds.min(),ncp.col_bnds.max()
-    #sys.exit()
+    #if no polygon was specified
     #create a polygon covering the whole area so that the job can be split
     if polygons == [None]:
         polygons = [Polygon(((ncp.col_bnds.min(),ncp.row_bnds.min()),(ncp.col_bnds.max(),ncp.row_bnds.min()),(ncp.col_bnds.max(),ncp.row_bnds.max()),(ncp.col_bnds.min(),ncp.row_bnds.max())))]
+
+
     for ii,polygon in enumerate(polygons):
         print(ii)
 
+        #skip invalid polygons
         if not polygon.is_valid:
             print "Polygon "+repr(ii+1)+" is not valid. "+polygon.wkt
             continue
@@ -785,6 +829,8 @@ def multipolygon_multicore_operation(dataset,var,polygons,time_range=None,clip=N
         if subdivide and not(polygons == None):
 
             #figure out the resolution and subdivide
+            #default value uses sqrt(polygon envelop area)
+            #generally resulting in 4-6 threads per polygon
             if subres == 'detect':
                 subpolys = make_shapely_grid(polygon,sqrt(polygon.envelope.area)/2.0,clip=True)
             else:
@@ -796,7 +842,7 @@ def multipolygon_multicore_operation(dataset,var,polygons,time_range=None,clip=N
                     poly2 = poly.intersection(polygon.envelope)
                     if poly2==None:
                         continue
-                #print poly.intersection(polygon).wkt
+
                 p = Process(target = ncp.extract_elements,
                                 args =       (
                                                 q,
@@ -832,8 +878,9 @@ def multipolygon_multicore_operation(dataset,var,polygons,time_range=None,clip=N
     #for p in pl:
         #p.join()
 
-    #consumer thread loop, the main process will grab any feature lists added by the
+    #consumer loop, the main process will grab any feature lists added by the
     #processing threads and continues until those threads have terminated.
+    #without this the processing threads will NOT terminate
     a=True
     while a:
         a=False
@@ -919,7 +966,7 @@ def multipolygon_multicore_operation(dataset,var,polygons,time_range=None,clip=N
             keylist.extend(x.keys())
         keylist = set(keylist)
 
-        #fine all the locations that have more than one feature associated with them
+        #find all the locations that have duplicated features
         for key in keylist:
             cur = []
             for x in recombine:
@@ -946,10 +993,11 @@ def multipolygon_multicore_operation(dataset,var,polygons,time_range=None,clip=N
                         
     elements2 = []
 
-    #expand elements
+    #expand elements in the case of multi-level data
     dtime = time.time()
     if not (levels == None):
         for x in elements:
+            #create a new feature for each data level
             for i in xrange(len(levels)):
                 e = x.copy()
                 e['properties'] = x['properties'].copy()
