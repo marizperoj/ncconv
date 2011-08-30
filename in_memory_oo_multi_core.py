@@ -37,6 +37,7 @@ class OcgDataset(object):
 
         self.dataset = nc.Dataset(dataset,'r')
         self.multiReset = kwds.get('multiReset') or False
+        self.verbose = kwds.get('verbose')
 #        self.polygon = kwds.get('polygon')
 #        self.temporal = kwds.get('temporal')
 #        self.row_name = kwds.get('row_name') or 'latitude'
@@ -78,7 +79,7 @@ class OcgDataset(object):
 
         #data file must be closed and reopened to work properly with multiple threads
         if self.multiReset:
-            print 'closed'
+            if self.verbose>1: print 'closed'
             self.dataset.close()
 
     def _itr_array_(self,a):
@@ -101,7 +102,7 @@ class OcgDataset(object):
         clip=False -- set to True to perform an intersection
         """
         
-        print('overlay...')
+        if self.verbose>1: print('overlay...')
         
         ## holds polygon objects
         self._igrid = np.empty(self.min_row.shape,dtype=object)
@@ -273,7 +274,7 @@ class OcgDataset(object):
         time_range=None -- [lower datetime, upper datetime]
         clip=False -- set to True to perform a full intersection
         """
-        print('getting numpy data...')
+        if self.verbose>1: print('getting numpy data...')
         
         ## perform the spatial operations
         self._set_overlay_(polygon=polygon,clip=clip)
@@ -314,13 +315,13 @@ class OcgDataset(object):
 
         #print an error message and return if the selection doesn't include any data
         if len(self._idxrow)==0:
-            print "Invalid Selection, unable to select row"
+            if self.verbose>0: print "Invalid Selection, unable to select row"
             return
         if len(self._idxcol)==0:
-            print "Invalid Selection, unable to select column"
+            if self.verbose>0: print "Invalid Selection, unable to select column"
             return
         if len(self._idxtime)==0:
-            print "Invalid Selection, unable to select time range"
+            if self.verbose>0: print "Invalid Selection, unable to select time range"
             return
         
         narg = time.clock()
@@ -345,7 +346,7 @@ class OcgDataset(object):
         elif dimShape == 4:
             #check if 1 or more levels have been selected
             if len(levels)==0:
-                print "Invalid Selection, unable to select levels"
+                if self.verbose>0: print "Invalid Selection, unable to select levels"
                 return
 
             #grab level values
@@ -366,10 +367,10 @@ class OcgDataset(object):
         #release the file lock
         lock.release()
 
-        print "dtime: ", time.clock()-narg
+        if self.verbose>1: print "dtime: ", time.clock()-narg
  
         
-        print('numpy extraction done.')
+        if self.verbose>1: print('numpy extraction done.')
         
         return(npd)
     
@@ -400,7 +401,7 @@ class OcgDataset(object):
         time_range=None -- [lower datetime, upper datetime]
         clip=False -- set to True to perform a full intersection
         """
-        print('extracting elements...')
+        if self.verbose>1: print('extracting elements...')
         ## dissolve argument is unique to extract_elements
         if 'dissolve' in kwds:
             dissolve = kwds.pop('dissolve')
@@ -607,7 +608,7 @@ class OcgDataset(object):
                                 recombine[ctr].append(feature)
                             else:
                                 features.append(feature)
-        print('extraction complete.')
+        if self.verbose>1: print('extraction complete.')
 
         if not(parent == None) and dissolve:
             q.put((parent,features,recombine))
@@ -795,7 +796,7 @@ on time and geometry to reduce file size'''
 #'__swig_getmethods__', '__swig_setmethods__', '__weakref__', 'next', 'this']
 
 
-def multipolygon_multicore_operation(dataset,var,polygons,time_range=None,clip=None,dissolve=None,levels = None,ocgOpts=None,subdivide=False,subres='detect'):
+def multipolygon_multicore_operation(dataset,var,polygons,time_range=None,clip=None,dissolve=None,levels = None,ocgOpts=None,subdivide=False,subres='detect',verbose=1):
 
     elements = []
     ret = []
@@ -808,6 +809,7 @@ def multipolygon_multicore_operation(dataset,var,polygons,time_range=None,clip=N
         if ocgOpts == None:
             ocgOpts = {}
         ocgOpts['multiReset'] = True
+    ocgOpts['verbose'] = verbose
     ncp = OcgDataset(dataset,**ocgOpts)
 
     #if no polygon was specified
@@ -817,11 +819,11 @@ def multipolygon_multicore_operation(dataset,var,polygons,time_range=None,clip=N
 
 
     for ii,polygon in enumerate(polygons):
-        print(ii)
+        if verbose>1: print(ii)
 
         #skip invalid polygons
         if not polygon.is_valid:
-            print "Polygon "+repr(ii+1)+" is not valid. "+polygon.wkt
+            if verbose>0: print "Polygon "+repr(ii+1)+" is not valid. "+polygon.wkt
             continue
 
         #if polygons have been specified and subdivide is True, each polygon will be subdivided
@@ -930,7 +932,7 @@ def multipolygon_multicore_operation(dataset,var,polygons,time_range=None,clip=N
             subgroups = [[g[t] for g in group] for t in xrange(len(group[0]))]
 
             ta = sum([y['weight'] for y in subgroups[0]])
-            print 't',ta
+            #print 't',ta
 
             #average the data values and form new features
             for subgroup in subgroups:
@@ -945,7 +947,7 @@ def multipolygon_multicore_operation(dataset,var,polygons,time_range=None,clip=N
                     #print total.area
                     #print avg
                 else:
-                    print (y['weight']/ta)
+                    #print (y['weight']/ta)
                     avg = sum([y['properties'][var]*(y['weight']/ta) for y in subgroup])
                     elements.append(    dict(
                                         id=subgroup[0]['id'],
@@ -1006,8 +1008,8 @@ def multipolygon_multicore_operation(dataset,var,polygons,time_range=None,clip=N
                 elements2.append(e)
     else:
         elements2 = elements
-    print "expansion time: ",time.time()-dtime
-    print "points: ",repr(len(elements2))
+    if verbose>1: print "expansion time: ",time.time()-dtime
+    if verbose>1: print "points: ",repr(len(elements2))
     return(elements2)
 
 

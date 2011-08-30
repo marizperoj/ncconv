@@ -87,7 +87,7 @@ class TestSimpleNc(unittest.TestCase):
         kwds = {
             'time_units': 'days since 1950-1-1 0:0:0.0',
         }
-        dataset = "../bccr_bcm2_0.1.sresa1b.monthly.Prcp.1950.nc"
+        dataset = "./bccr_bcm2_0.1.sresa1b.monthly.Prcp.1950.nc"
         ocg = ncconv.OcgDataset(dataset,**kwds)
 
         #polygon = Polygon(((-90,40),(-80,40),(-80,50),(-90,50)))
@@ -153,7 +153,7 @@ class TestSimpleNc(unittest.TestCase):
             'time_units': 'days since 1800-1-1 00:00:0.0',
             'level_name': 'lev'
         }
-        dataset = '../pcmdi.ipcc4.bccr_bcm2_0.1pctto2x.run1.monthly.cl_A1_1.nc'
+        dataset = './pcmdi.ipcc4.bccr_bcm2_0.1pctto2x.run1.monthly.cl_A1_1.nc'
         ocg = ncconv.OcgDataset(dataset,**kwds)
         levels = [0,1,2,3]
 
