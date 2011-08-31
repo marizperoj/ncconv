@@ -1044,6 +1044,7 @@ def make_shapely_grid(poly,res,as_numpy=False,clip=True):
     pmin_y = Y
     pmax_y = Y + res
     ## make the 2-d array
+    print pmin_y,pmin_x,pmax_y,pmax_x,poly.wkt
     if clip:
         poly_array = vfunc_poly(pmin_y,pmin_x,pmax_y,pmax_x,poly)
     else:
