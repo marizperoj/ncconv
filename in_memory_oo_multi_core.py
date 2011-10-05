@@ -846,8 +846,7 @@ def multipolygon_multicore_operation(dataset,var,polygons,time_range=None,clip=N
                         continue
 
                 p = Process(target = ncp.extract_elements,
-                                args =       (
-                                                q,
+                                args =       (q,
                                                 var,),
                                 kwargs= {
                                                 'lock':l,

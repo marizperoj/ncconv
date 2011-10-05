@@ -56,13 +56,13 @@ PROJCS["North_America_Equidistant_Conic",
 class PgSpatialReference(osr.SpatialReference):
     
     def ExportToPostGisInsertStatement(self,srid):
-        sql = """INSERT INTO spatial_ref_sys (srid,auth_name,auth_srid,srtext,proj4text) VALUES ({0},'custom',{0},'{1}','{2}')""".format(srid,sr.ExportToWkt(),sr.ExportToProj4())
+        sql = """INSERT INTO spatial_ref_sys (srid,auth_name,auth_srid,srtext,proj4text) VALUES ({0},'custom',{0},'{1}','{2}');""".format(srid,self.ExportToWkt(),self.ExportToProj4())
         return sql
 
 #p = osr.ImportFromWKT(wkt)
-sr = PgSpatialReference()
-sr.ImportFromWkt(wkt)
-print sr.AutoIdentifyEPSG()
-print sr.ExportToProj4()
-print sr.ExportToWkt()
-print sr.ExportToPostGisInsertStatement(900007)
+#sr = PgSpatialReference()
+#sr.ImportFromWkt(wkt)
+#print sr.AutoIdentifyEPSG()
+#print sr.ExportToProj4()
+#print sr.ExportToWkt()
+#print sr.ExportToPostGisInsertStatement(900007)
