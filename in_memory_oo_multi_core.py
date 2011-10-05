@@ -516,13 +516,13 @@ class OcgDataset(object):
                         feature = dict(
                             id=ids.next(),
                             geometry=unioned,
-                            properties=dict({var:weighted[kk,:,:].sum(),
+                            properties=dict({var:float(weighted[kk,:,:].sum()),
                                             'timestamp':self.timevec[self._idxtime[kk]]}))
                     elif ocgShape==4:
                         feature = dict(
                             id=ids.next(),
                             geometry=unioned,
-                            properties=dict({var:list(weighted[kk,x,:,:].sum() for x in xrange(len(levels))),
+                            properties=dict({var:float(list(weighted[kk,x,:,:].sum() for x in xrange(len(levels)))),
                                             'timestamp':self.timevec[self._idxtime[kk]],
                                             'levels':list(x for x in self.levels[levels])}))
                     
@@ -545,7 +545,7 @@ class OcgDataset(object):
                                     id=ids.next(),
                                     geometry=self._igrid[ii,jj],
                                     weight=1.0,
-                                    properties=dict({var:npd[kk,ii,jj],
+                                    properties=dict({var:float(npd[kk,ii,jj]),
                                                     'timestamp':self.timevec[self._idxtime[kk]]}))
                                 #print npd[kk,ii,jj]
                             if ocgShape==4:
@@ -553,7 +553,7 @@ class OcgDataset(object):
                                     id=ids.next(),
                                     geometry=self._igrid[ii,jj],
                                     weight=1.0,
-                                    properties=dict({var:list(npd[kk,x,ii,jj] for x in xrange(len(levels))),
+                                    properties=dict({var:float(list(npd[kk,x,ii,jj] for x in xrange(len(levels)))),
                                                     'timestamp':self.timevec[self._idxtime[kk]],
                                                     'level':list(x for x in self.levels[levels])}))
                             recombine[ctr].append(feature)
@@ -972,7 +972,7 @@ def multipolygon_multicore_operation(dataset,var,polygons,time_range=None,clip=N
                     elements.append(    dict(
                                         id=subgroup[0]['id'],
                                         geometry=total,
-                                        properties=dict({var:avg,
+                                        properties=dict({var:float(avg),
                                                         'timestamp':subgroup[0]['properties']['timestamp']})))
     #handle recombining undissolved features
     else:
