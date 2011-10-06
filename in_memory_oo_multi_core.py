@@ -667,7 +667,22 @@ geometry output is optional'''
     sr2.ImportFromEPSG(3005) #Albers Equal Area is used to ensure legitimate area values
 
     with open(path,'w') as f:
+        
+        #prepare column header
+        header = ['id','timestamp',var]
+        if 'level' in elements[0]['properties'].keys():
+                header += ['level']
+        header += ['area']
+        if wkb:
+            header += ['wkb']
 
+        if wkt:
+            header += ['wkt']
+        
+                
+        f.write(','.join(header))
+        f.write('\n')
+        
         for ii,element in enumerate(elements):
 
             #convert area from degrees to m^2
@@ -752,6 +767,26 @@ on time and geometry to reduce file size'''
     ft = open(patht,'w')
     fg = open(pathg,'w')
     fd = open(pathd,'w')
+    
+    ft.write(','.join(['tid','timestamp']))
+    ft.write('\n')
+    
+    fgheader = ['gid','area']
+    
+    if wkt:
+        fgheader += ['wkt']
+    if wkb:
+        fgheader += ['wkb']
+
+    fg.write(','.join(fgheader))
+    fg.write('\n')
+    
+    fdheader = ['id','tid','gid',var]
+    if 'level' in elements[0]['properties']:
+        fdheader += ['level']
+        
+    fd.write(','.join(fdheader))
+    fd.write('\n')
 
     #write the features to file
     for ii,time in enumerate(data.keys()):
