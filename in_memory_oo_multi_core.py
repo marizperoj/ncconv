@@ -38,7 +38,6 @@ class OcgDataset(object):
         self.url = dataset
 
         self.dataset = nc.Dataset(dataset,'r')
-        self.multiReset = kwds.get('multiReset') or False
         self.verbose = kwds.get('verbose')
 #        self.polygon = kwds.get('polygon')
 #        self.temporal = kwds.get('temporal')
@@ -78,11 +77,6 @@ class OcgDataset(object):
         ## referenced after the spatial subset to retrieve data from the dataset
         self.real_col,self.real_row = np.meshgrid(np.arange(0,len(self.col_bnds)),
                                                   np.arange(0,len(self.row_bnds)))
-
-        #data file must be closed and reopened to work properly with multiple threads
-        if self.multiReset:
-            if self.verbose>1: print 'closed'
-            self.dataset.close()
 
     def _itr_array_(self,a):
         "a -- 2-d ndarray"
@@ -277,7 +271,6 @@ class OcgDataset(object):
                 ret = ppp
         return(ret)
         
-        
     def _get_numpy_data_(self,var_name,polygon=None,time_range=None,clip=False,levels = [0],lock=Lock()):
         """
         var_name -- NC variable to extract from
@@ -342,10 +335,6 @@ class OcgDataset(object):
         while not(lock.acquire(False)):
             time.sleep(.1)
 
-        #reopen the data file
-        if self.multiReset:
-            self.dataset = nc.Dataset(self.url,'r')
-
         ##check if data is 3 or 4 dimensions
         dimShape = len(self.dataset.variables[var_name].dimensions)
 
@@ -371,10 +360,6 @@ class OcgDataset(object):
                 npd = npd.reshape(len(self._idxtime),len(levels),len(self._idxrow),len(self._idxcol))
 
             #print self._weights
-
-        #close the dataset
-        if self.multiReset:
-            self.dataset.close()
     
         #release the file lock
         lock.release()
@@ -843,19 +828,20 @@ on time and geometry to reduce file size'''
 #'__swig_getmethods__', '__swig_setmethods__', '__weakref__', 'next', 'this']
 
 
-def multipolygon_multicore_operation(dataset,var,polygons,time_range=None,clip=None,dissolve=None,levels = None,ocgOpts=None,subdivide=False,subres='detect',verbose=1):
+def multipolygon_multicore_operation(dataset,var,polygons,time_range=None,clip=None,dissolve=None,levels = None,ocgOpts=None,subdivide=False,subres='detect',verbose=1,maxProc=0):
 
     elements = []
     ret = []
     q = Queue()
     l = Lock()
     pl = []
+    pcount = 0
+    pcur = 0
 
     #set the file reset option if the file is local
     if not('http:' in dataset or 'www.' in dataset):
         if ocgOpts == None:
             ocgOpts = {}
-        ocgOpts['multiReset'] = True
     ocgOpts['verbose'] = verbose
     ncp = OcgDataset(dataset,**ocgOpts)
 
@@ -900,8 +886,8 @@ def multipolygon_multicore_operation(dataset,var,polygons,time_range=None,clip=N
 #                ipdb.set_trace()
 #                ncp.extract_elements(q,var,lock=l,polygon=poly,time_range=time_range,clip=clip,dissolve=dissolve,levels=levels,parentPoly=11)
                 ############################
-                
-                p = Process(target = ncp.extract_elements,
+                ncpp = OcgDataset(dataset,**ocgOpts)
+                p = Process(target = ncpp.extract_elements,
                                 args =       (q,
                                                 var,),
                                 kwargs= {
@@ -912,12 +898,12 @@ def multipolygon_multicore_operation(dataset,var,polygons,time_range=None,clip=N
                                                 'dissolve':dissolve,
                                                 'levels' : levels,
                                                 'parentPoly':ii})
-                p.start()
                 pl.append(p)
 
         #if no polygons are specified only 1 thread will be created per polygon
         else:
-            p = Process(target = ncp.extract_elements,
+            ncpp = OcgDataset(dataset,**ocgOpts)
+            p = Process(target = ncpp.extract_elements,
                             args =       (
                                             q,
                                             var,),
@@ -929,7 +915,6 @@ def multipolygon_multicore_operation(dataset,var,polygons,time_range=None,clip=N
                                             'dissolve':dissolve,
                                             'levels' : levels,
                                             'parentPoly':ii})
-            p.start()
             pl.append(p)
 
     #for p in pl:
@@ -940,10 +925,25 @@ def multipolygon_multicore_operation(dataset,var,polygons,time_range=None,clip=N
     #without this the processing threads will NOT terminate
     a=True
     while a:
-        a=False
-        #check if any threads are still active
+        #count active processes
+        pcount = 0
         for p in pl:
-            a = a or p.is_alive()
+            if p.is_alive():
+                pcount +=1
+                
+        #if unstarted processes remain and we are under the limit, start more
+        if pcur < len(pl) and (pcount<maxProc or maxProc == 0):
+            while(pcount<maxProc or (maxProc==0 and pcur<len(pl))):
+                pl[pcur].start()
+                pcur += 1
+                pcount += 1
+            
+        #once all the processes have been started start checking if we have finished.
+        if pcur == len(pl):
+            a=False
+            #check if any threads are still active
+            for p in pl:
+                a = a or p.is_alive()
 
         #remove anything from the queue if present
         while not q.empty():
@@ -1190,9 +1190,9 @@ if __name__ == '__main__':
     
     #NC = '/home/reid/Desktop/ncconv/pcmdi.ipcc4.bccr_bcm2_0.1pctto2x.run1.monthly.cl_A1_1.nc'
     #NC = '/home/bkoziol/git/OpenClimateGIS/bin/climate_data/maurer/bccr_bcm2_0.1.sresa1b.monthly.Prcp.1950.nc'
-    #NC = '/home/reid/Desktop/ncconv/bccr_bcm2_0.1.sresa1b.monthly.Prcp.1950.nc'
+    NC = '/home/reid/Desktop/ncconv/ncconv/bccr_bcm2_0.1.sresa1b.monthly.Prcp.1950.nc'
     #NC = 'http://hydra.fsl.noaa.gov/thredds/dodsC/oc_gis_downscaling.bccr_bcm2.sresa1b.Prcp.Prcp.1.aggregation.1'
-    NC = 'test.nc'
+    #NC = 'test.nc'
 
 #    TEMPORAL = [datetime.datetime(1950,2,1),datetime.datetime(1950,4,30)]
     TEMPORAL = [datetime.datetime(1950,2,1),datetime.datetime(1950,5,1)]

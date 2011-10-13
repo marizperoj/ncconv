@@ -236,7 +236,7 @@ class TestSimpleNc(unittest.TestCase):
 
         E = 1000000000000.0
 
-        lines = [line.replace('\n','').split(',') for line in tf]
+        lines = [line.replace('\n','').split(',') for line in tf][1:]
         self.assertEqual(lines[0][:2],["1","2000-01-01 00:00:00"])
         self.assertAlmostEqual(float(lines[0][2]),1.6243454217910767,6)
         self.assertAlmostEqual(float(lines[0][3])/E,1220762936068.626/E,12)#1220762936068.626)
@@ -265,7 +265,7 @@ class TestSimpleNc(unittest.TestCase):
         ncconv.as_tabular(elements,'Prcp',wkt=True,path='./test_tabular.txt')
         tf = open('./test_tabular.txt','r')
 
-        lines = [line.replace('\n','').split(',') for line in tf]
+        lines = [line.replace('\n','').split(',') for line in tf][1:]
         self.assertEqual(lines[0][:2],["1","2000-01-01 00:00:00"])
         self.assertEqual(','.join(lines[0][4:]),"'POLYGON ((0.0000000000000000 0.0000000000000000, 0.0000000000000000 10.0000000000000000, 10.0000000000000000 10.0000000000000000, 10.0000000000000000 0.0000000000000000, 0.0000000000000000 0.0000000000000000))'")
         self.assertAlmostEqual(float(lines[0][2]),1.6243454217910767,6)
@@ -282,7 +282,7 @@ class TestSimpleNc(unittest.TestCase):
         ncconv.as_tabular(elements,'Prcp',path='./test_tabular.txt')
         tf = open('./test_tabular.txt','r')
 
-        lines = [line.replace('\n','').split(',') for line in tf]
+        lines = [line.replace('\n','').split(',') for line in tf][1:]
         self.assertEqual(lines[0][:2],["1","2000-01-01 00:00:00"])
         self.assertAlmostEqual(float(lines[0][2]),0.17242820560932159,6)
         self.assertAlmostEqual(float(lines[0][4])/E,1220762936068.626/E,12)
@@ -327,16 +327,16 @@ class TestSimpleNc(unittest.TestCase):
 
         E=1000000000000
 
-        lines = [line for line in tft]
+        lines = [line for line in tft][1:]
 
         self.assertEqual(lines[0].replace('\n',''),'1,2000-01-01 00:00:00')
 
-        lines = [line.replace('\n','').split(',') for line in tfg]
+        lines = [line.replace('\n','').split(',') for line in tfg][1:]
 
         self.assertEqual(lines[0][0],'1')
         self.assertAlmostEqual(float(lines[0][1])/E,1220762936068.626/E)
 
-        lines = [line for line in tfd]
+        lines = [line for line in tfd][1:]
 
         self.assertEqual(lines[0].replace('\n',''),'0,1,1,1.6243454217910767,1')
 
@@ -349,7 +349,7 @@ class TestSimpleNc(unittest.TestCase):
         tfg = open('./test_keyTabular_geometry.txt','r')
         tfd = open('./test_keyTabular_data.txt','r')
 
-        lines = [line for line in tft]
+        lines = [line for line in tft][1:]
 
         self.assertEqual(lines[0].replace('\n',''),'1,2000-01-01 00:00:00')
 
@@ -357,13 +357,13 @@ class TestSimpleNc(unittest.TestCase):
 
         #self.assertEqual(lines[0].replace('\n',''),"1,1220762936068.626,POLYGON ((0.0000000000000000 0.0000000000000000, 0.0000000000000000 10.0000000000000000, 10.0000000000000000 10.0000000000000000, 10.0000000000000000 0.0000000000000000, 0.0000000000000000 0.0000000000000000))")
 
-        lines = [line.replace('\n','').split(',') for line in tfg]
+        lines = [line.replace('\n','').split(',') for line in tfg][1:]
 
         self.assertEqual(lines[0][0],'1')
         self.assertAlmostEqual(float(lines[0][1])/E,1220762936068.626/E)
         self.assertEqual(",".join(lines[0][2:]),"POLYGON ((0.0000000000000000 0.0000000000000000, 0.0000000000000000 10.0000000000000000, 10.0000000000000000 10.0000000000000000, 10.0000000000000000 0.0000000000000000, 0.0000000000000000 0.0000000000000000))")
 
-        lines = [line for line in tfd]
+        lines = [line for line in tfd][1:]
 
         self.assertEqual(lines[0].replace('\n',''),'0,1,1,1.6243454217910767,1')
 
@@ -380,17 +380,17 @@ class TestSimpleNc(unittest.TestCase):
         tfg = open('./test_keyTabular_geometry.txt','r')
         tfd = open('./test_keyTabular_data.txt','r')
 
-        lines = [line for line in tft]
+        lines = [line for line in tft][1:]
 
         self.assertEqual(lines[1].replace('\n',''),'2,2000-01-01 00:00:00')
         self.assertEqual(lines[0].replace('\n',''),'1,2000-01-02 00:00:00')
 
-        lines = [line.replace('\n','').split(',') for line in tfg]
+        lines = [line.replace('\n','').split(',') for line in tfg][1:]
 
         self.assertEqual(lines[0][0],'1')
         self.assertAlmostEqual(float(lines[0][1])/E,1220762936068.626/E)
 
-        lines = [line for line in tfd]
+        lines = [line for line in tfd][1:]
 
         self.assertEqual(lines[0].replace('\n',''),'1,1,1,0.48851814866065979,1')
         self.assertEqual(lines[1].replace('\n',''),'0,2,1,1.6243454217910767,1')
@@ -409,11 +409,11 @@ class TestSimpleNc(unittest.TestCase):
         tfg = open('./test_keyTabular_geometry.txt','r')
         tfd = open('./test_keyTabular_data.txt','r')
 
-        lines = [line for line in tft]
+        lines = [line for line in tft][1:]
 
         self.assertEqual(lines[0].replace('\n',''),'1,2000-01-01 00:00:00')
 
-        lines = [line.replace('\n','').split(',') for line in tfg]
+        lines = [line.replace('\n','').split(',') for line in tfg][1:]
 
         self.assertEqual(lines[0][0],'1')
         self.assertAlmostEqual(float(lines[0][1])/E,1220762936068.626/E)
@@ -422,7 +422,7 @@ class TestSimpleNc(unittest.TestCase):
         #self.assertEqual(lines[0].replace('\n',''),'1,1220762936068.626')
         #self.assertEqual(lines[1].replace('\n',''),'2,1220762936068.6296')
 
-        lines = [line for line in tfd]
+        lines = [line for line in tfd][1:]
 
         self.assertEqual(lines[0].replace('\n',''),'0,1,1,1.6243454217910767,1')
         self.assertEqual(lines[1].replace('\n',''),'1,1,2,0.61175638437271118,1')
