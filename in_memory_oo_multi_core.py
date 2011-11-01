@@ -8,13 +8,12 @@ import geojson
 from shapely.ops import cascaded_union
 #from openclimategis.util.helpers import get_temp_path
 #from openclimategis.util.toshp import OpenClimateShp
-from shapely.geometry.multipolygon import MultiPolygon, MultiPolygonAdapter
-from shapely import prepared, wkt
-from shapely.geometry.geo import asShape
-import time, sys
+#from shapely.geometry.multipolygon import MultiPolygon, MultiPolygonAdapter
+from shapely import prepared #, wkt
+#from shapely.geometry.geo import asShape
+import time #, sys
 from multiprocessing import Process, Queue, Lock
 from math import sqrt
-import ipdb
 import os
 from osgeo import osr, ogr
 
@@ -35,15 +34,18 @@ class OcgDataset(object):
     """
     
     def __init__(self,dataset,**kwds):
-        self.url = dataset
-
-        self.dataset = nc.Dataset(dataset,'r')
+        
+        ## the dataset can be passed as an open object or a uri.
+        if isinstance(dataset,nc.Dataset):
+            self.dataset = dataset
+            self.uri = None
+        else:
+            self.uri = dataset
+            self.dataset = nc.Dataset(self.uri,'r')
+            
+        ## extract other keyword arguments -------------------------------------
+        
         self.verbose = kwds.get('verbose')
-#        self.polygon = kwds.get('polygon')
-#        self.temporal = kwds.get('temporal')
-#        self.row_name = kwds.get('row_name') or 'latitude'
-#        self.col_name = kwds.get('col_name') or 'longitude'
-
         ## extract the names of the spatiotemporal variables/dimensions from
         ## the keyword arguments.
         self.rowbnds_name = kwds.get('rowbnds_name') or 'bounds_latitude'
@@ -54,6 +56,10 @@ class OcgDataset(object):
         self.level_name = kwds.get('level_name') or 'levels'
 #        self.clip = kwds.get('clip') or False
 #        self.dissolve = kwds.get('dissolve') or False
+#        self.polygon = kwds.get('polygon')
+#        self.temporal = kwds.get('temporal')
+#        self.row_name = kwds.get('row_name') or 'latitude'
+#        self.col_name = kwds.get('col_name') or 'longitude'
 
         #print self.dataset.variables[self.time_name].units
         #sys.exit()
@@ -68,7 +74,7 @@ class OcgDataset(object):
                                               self.time_units,
                                               self.calendar)
         
-        ## these are base numpy arrays used by spatial operations.
+        ## these are base numpy arrays used by spatial operations. -------------
 
         ## four numpy arrays one for each bounding coordinate of a polygon
         self.min_col,self.min_row = np.meshgrid(self.col_bnds[:,0],self.row_bnds[:,0])
@@ -77,6 +83,12 @@ class OcgDataset(object):
         ## referenced after the spatial subset to retrieve data from the dataset
         self.real_col,self.real_row = np.meshgrid(np.arange(0,len(self.col_bnds)),
                                                   np.arange(0,len(self.row_bnds)))
+
+    def __del__(self):
+        try:
+            self.dataset.close()
+        except:
+            pass
 
     def _itr_array_(self,a):
         "a -- 2-d ndarray"
@@ -397,6 +409,7 @@ class OcgDataset(object):
         polygon=None -- shapely polygon object
         time_range=None -- [lower datetime, upper datetime]
         clip=False -- set to True to perform a full intersection
+        parentPoly -- int polygon ID used for feature recombination
         """
         if self.verbose>1: print('extracting elements...')
         ## dissolve argument is unique to extract_elements
@@ -1067,6 +1080,26 @@ def multipolygon_multicore_operation(dataset,var,polygons,time_range=None,clip=N
     if verbose>1: print "points: ",repr(len(elements2))
     return(elements2)
 
+def multipolygon_singlecore_operation(uri,var,polygons,time_range,clip=False,dissolve=False,levels=None,ocgOpts={}):
+    ## open the connection to the dataset object
+    dataset = nc.Dataset(uri,'r')
+    ## the ocgdataset object
+    ocg_dataset = OcgDataset(dataset,**ocgOpts)
+    ## this holds the extracted elements
+    elements = []
+    ## the base method keyword arugments
+    kwds = dict(time_range=time_range,
+                clip=clip,
+                dissolve=dissolve,
+                levels=levels)
+    ## loop for each polygon
+    for polygon in polygons:
+        ## update keyword arguments to include current polygon
+        kwds.update(dict(polygon=polygon))
+        ## append the extracted elements
+        elements.append(ocg_dataset.extract_elements(var,**kwds))
+    return(elements)
+    
 
 def make_shapely_grid(poly,res,as_numpy=False,clip=True):
     """
@@ -1235,7 +1268,8 @@ if __name__ == '__main__':
     #out = as_geojson(elements)
     #with open('./out_M3.json','w') as f:
         #f.write(out)
-    as_keyTabular(elements,VAR,path='./out_tabular.txt',wkt=True)
+#    as_keyTabular(elements,VAR,path='./out_tabular.txt',wkt=True)
+    as_tabular(elements,VAR, wkt=True, path='out_tabluar2.txt')
     dtime = time.time()-dtime
 
     blarg = time.time()
